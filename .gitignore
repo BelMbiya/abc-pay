@@ -1,0 +1,30 @@
+# Monorepo abc-pay — filet de sécurité racine (les sous-projets ont aussi leur .gitignore)
+
+# Dépendances
+node_modules/
+vendor/
+
+# Environnement & secrets (JAMAIS versionnés)
+.env
+.env.*
+!.env.example
+*.pem
+!tests/fixtures/*.pem
+auth.json
+storage/app/keys/
+
+# Build / cache
+.next/
+dist/
+build/
+/abc-pay-api/storage/*.key
+/abc-pay-api/storage/framework/
+/abc-pay-api/storage/logs/
+/abc-pay-api/bootstrap/cache/*.php
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

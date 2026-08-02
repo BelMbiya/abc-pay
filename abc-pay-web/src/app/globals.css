@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* =====================================================================
+   abc pay — Thème (Tailwind v4, CSS-first) — SOURCE DE VÉRITÉ VISUELLE
+   Tokens repris À L'IDENTIQUE du prototype MVP (8 abc-pay-webapp v1.mvp19).
+   Utilitaires générés : bg-navy, text-blue-600, rounded-pill, font-display…
+   Ne JAMAIS coder une couleur en dur : toujours passer par ces tokens.
+   ===================================================================== */
+@theme {
+  /* Couleurs */
+  --color-navy:      #0F1B30;
+  --color-navy-2:    #16233C;
+  --color-blue-700:  #0F3E8A;
+  --color-blue-600:  #1857B8;
+  --color-blue-500:  #2D74D6;
+  --color-blue-100:  #DCEAFB;
+  --color-gold-600:  #E08E00;
+  --color-gold-500:  #F5A623;
+  --color-gold-400:  #FFC24B;
+  --color-ink:       #101826;
+  --color-gray-700:  #3B4452;
+  --color-gray-500:  #6B7484;
+  --color-gray-300:  #C6CDD6;
+  --color-gray-100:  #EEF1F5;
+  --color-green:     #1BA672;
+  --color-red:       #E5484D;
+  /* Surfaces dérivées présentes dans le MVP */
+  --color-success-bg: #E6F5EE;   /* pastille "vérifié / payé" */
+  --color-fee-bg:     #FFF3DC;   /* bandeau frais de service */
+  --color-gold-ink:   #2A1700;   /* texte sur fond or */
+
+  /* Polices : titres = Sora, texte = Inter (injectées par next/font) */
+  --font-display: var(--font-sora), "Sora", sans-serif;
+  --font-sans:    var(--font-inter), "Inter", sans-serif;
+
+  /* Rayons (11 → 26px, pills 100px) */
+  --radius-lg:   11px;
+  --radius-xl:   14px;
+  --radius-2xl:  16px;
+  --radius-3xl:  18px;
+  --radius-4xl:  22px;
+  --radius-boot: 26px;
+  --radius-pill: 100px;
+
+  /* Largeur de la colonne payeur (namespace --container-* → max-w-app) */
+  --container-app: 480px;
+  --container-desk: 720px;
+}
+
+/* Dégradés & ombres signature (classes utilitaires réutilisables) */
+@layer utilities {
+  .bg-grad-primary { background-image: linear-gradient(135deg, #2D74D6, #0F3E8A); }
+  .bg-grad-navy    { background-image: linear-gradient(135deg, #0F1B30, #16233C); }
+  .bg-grad-send    { background-image: linear-gradient(135deg, #FF7A6E, #E5343A); }
+  .bg-grad-receive { background-image: linear-gradient(135deg, #FFCE6B, #E08E00); }
+  .bg-grad-pay     { background-image: linear-gradient(135deg, #FFB35E, #E5680A); }
+  .bg-grad-tuition { background-image: linear-gradient(135deg, #6ED0FF, #0E86D4); }
+  .bg-grad-gold    { background-image: linear-gradient(135deg, #FFC24B, #E08E00); }
+  .shadow-card     { box-shadow: 0 2px 8px rgba(15,27,48,0.10); }
+  .shadow-hero     { box-shadow: 0 14px 28px rgba(16,40,90,0.28); }
+}
+
+/* Variables CSS brutes conservées pour un portage 1:1 du HTML (var(--navy)…) */
+:root {
+  --navy:#0F1B30; --navy-2:#16233C;
+  --blue-700:#0F3E8A; --blue-600:#1857B8; --blue-500:#2D74D6; --blue-100:#DCEAFB;
+  --gold-600:#E08E00; --gold-500:#F5A623; --gold-400:#FFC24B;
+  --ink:#101826; --gray-700:#3B4452; --gray-500:#6B7484; --gray-300:#C6CDD6; --gray-100:#EEF1F5;
+  --green:#1BA672; --red:#E5484D;
+}
+
+@layer base {
+  html, body { min-height: 100dvh; }
+  body {
+    font-family: var(--font-inter), "Inter", sans-serif;
+    color: var(--color-ink);
+    background: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-sora), "Sora", sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
