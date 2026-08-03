@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu, X, LifeBuoy, LogOut } from "lucide-react";
 import { BackofficeSidebar, NAV } from "./BackofficeSidebar";
 import { StaffNotificationBell } from "./StaffNotificationBell";
 import { ToastProvider } from "@/components/ui";
+import { SupportSheet } from "@/components/payer/SupportSheet";
 import { establishment } from "@/lib/backoffice-data";
+import { clearStaffToken } from "@/lib/staff-auth";
+import { fetchStaffTickets, openStaffTicket } from "@/lib/support-api";
 import { cn } from "@/lib/cn";
 
 /**
@@ -17,9 +20,18 @@ import { cn } from "@/lib/cn";
  */
 export function BackofficeShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const router = useRouter();
   const pathname = usePathname();
   const isActive = (href: string) =>
     href === "/etablissement" ? pathname === href : pathname.startsWith(href);
+
+  const logout = () => {
+    clearStaffToken();
+    router.push("/etablissement-connexion");
+  };
+
+  const staffSupportApi = { fetch: fetchStaffTickets, open: openStaffTicket };
 
   return (
     <ToastProvider>
@@ -45,9 +57,25 @@ export function BackofficeShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          {/* Cloche desktop (flottante) */}
-          <div className="pointer-events-none absolute right-5 top-5 z-20 hidden md:block">
+          {/* Contrôles desktop (flottants) : support, notifications, déconnexion */}
+          <div className="pointer-events-none absolute right-5 top-5 z-20 hidden items-center gap-2 md:flex">
+            <button
+              type="button"
+              onClick={() => setSupportOpen(true)}
+              aria-label="Support"
+              className="pointer-events-auto flex size-9 items-center justify-center rounded-lg bg-gray-100 text-ink hover:bg-gray-300/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <LifeBuoy className="size-[18px]" strokeWidth={2} />
+            </button>
             <div className="pointer-events-auto"><StaffNotificationBell /></div>
+            <button
+              type="button"
+              onClick={logout}
+              aria-label="Déconnexion"
+              className="pointer-events-auto flex size-9 items-center justify-center rounded-lg bg-gray-100 text-red hover:bg-gray-300/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <LogOut className="size-[18px]" strokeWidth={2} />
+            </button>
           </div>
 
           <main className="flex-1">{children}</main>
@@ -102,9 +130,27 @@ export function BackofficeShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+
+            <div className="my-2 border-t border-gray-100" />
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setSupportOpen(true); }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] font-semibold text-ink transition-colors hover:bg-gray-100"
+            >
+              <LifeBuoy className="size-4 text-gray-500" strokeWidth={2} /> Support & aide
+            </button>
+            <button
+              type="button"
+              onClick={logout}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] font-semibold text-red transition-colors hover:bg-gray-100"
+            >
+              <LogOut className="size-4" strokeWidth={2} /> Déconnexion
+            </button>
           </nav>
         </div>
       </div>
+
+      <SupportSheet open={supportOpen} onClose={() => setSupportOpen(false)} api={staffSupportApi} />
     </ToastProvider>
   );
 }

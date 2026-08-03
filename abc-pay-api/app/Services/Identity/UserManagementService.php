@@ -35,6 +35,23 @@ class UserManagementService
         return $users->map(fn (User $u) => $this->row($u, $staffIds->has($u->id)))->all();
     }
 
+    /**
+     * Crée un compte utilisateur (particulier) par l'admin. Le titulaire se connecte
+     * ensuite par OTP (aucun mot de passe). Champs d'identité facultatifs.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function create(array $data): array
+    {
+        $user = new User;
+        $user->phone = $data['phone'];
+        $user->name = $data['name'] ?? null;
+        $user->email = $data['email'] ?? null;
+        $user->save();
+
+        return $this->show($user);
+    }
+
     /** Détail d'un compte + dernières transactions + signalements de fraude. */
     public function show(User $user): array
     {

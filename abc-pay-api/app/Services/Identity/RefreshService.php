@@ -75,6 +75,11 @@ class RefreshService
         if (! $staff) {
             throw new InvalidRefreshTokenException('Accès établissement révoqué.');
         }
+        // SÉCURITÉ : établissement suspendu → plus de renouvellement de session.
+        $establishment = \App\Models\Establishment::find($establishmentId);
+        if (! $establishment || ! $establishment->is_active) {
+            throw new InvalidRefreshTokenException('Établissement suspendu.');
+        }
         // SÉCURITÉ : rôle RE-LU en base (jamais repris du jeton) → un downgrade de rôle
         // prend effet immédiatement au prochain refresh (pas de persistance de privilège).
         $role = $staff->role;

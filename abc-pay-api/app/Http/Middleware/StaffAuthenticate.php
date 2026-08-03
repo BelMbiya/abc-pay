@@ -42,6 +42,13 @@ class StaffAuthenticate
             return $this->unauthorized();
         }
 
+        // SÉCURITÉ : accès gelé si l'établissement est suspendu ou le compte bloqué.
+        if (! $establishment->is_active || $user->is_blocked) {
+            return response()->json([
+                'error' => ['code' => 'establishment_suspended', 'message' => 'Établissement suspendu ou compte bloqué. Contacte abc pay.'],
+            ], 403);
+        }
+
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('establishment', $establishment);
         $request->attributes->set('staff_role', $claims['role'] ?? null);

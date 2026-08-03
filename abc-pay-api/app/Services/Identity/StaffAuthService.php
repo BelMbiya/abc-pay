@@ -2,6 +2,7 @@
 
 namespace App\Services\Identity;
 
+use App\Models\Establishment;
 use App\Models\EstablishmentStaff;
 use App\Models\User;
 use App\Services\Identity\Exceptions\InvalidCredentialsException;
@@ -29,9 +30,19 @@ class StaffAuthService
             throw new InvalidCredentialsException('Identifiants invalides.');
         }
 
+        if ($user->is_blocked) {
+            throw new InvalidCredentialsException('Compte bloqué. Contacte abc pay.');
+        }
+
         $staff = EstablishmentStaff::where('user_id', $user->id)->first();
         if (! $staff) {
             throw new InvalidCredentialsException('Ce compte n\'a pas d\'accès établissement.');
+        }
+
+        // SÉCURITÉ : un établissement suspendu ne peut plus se connecter.
+        $establishment = Establishment::find($staff->establishment_id);
+        if (! $establishment || ! $establishment->is_active) {
+            throw new InvalidCredentialsException('Cet établissement est suspendu. Contacte abc pay.');
         }
 
         return [

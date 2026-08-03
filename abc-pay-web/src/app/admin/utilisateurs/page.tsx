@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, RefreshCw, BadgeCheck, Users as UsersIcon } from "lucide-react";
-import { StatusPill, Pagination, usePagination } from "@/components/ui";
+import { Search, RefreshCw, BadgeCheck, Users as UsersIcon, Plus, ChevronRight } from "lucide-react";
+import { StatusPill, Pagination, usePagination, Button } from "@/components/ui";
 import { PageHeader } from "@/components/backoffice/StatCard";
 import { fetchUsers, ROLE_LABEL, type AdminUser } from "@/lib/admin-users-api";
 import { AdminUserSheet } from "@/components/admin/AdminUserSheet";
+import { CreateUserSheet } from "@/components/admin/CreateUserSheet";
 
 function fdate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -16,6 +17,7 @@ export default function AdminUsersPage() {
   const [items, setItems] = useState<AdminUser[]>([]);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -48,7 +50,11 @@ export default function AdminUsersPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1100px] px-5 py-6 md:px-8 md:py-8">
-      <PageHeader title="Utilisateurs" subtitle={`${items.length} compte${items.length > 1 ? "s" : ""} · ${blocked} bloqué${blocked > 1 ? "s" : ""}`} />
+      <PageHeader
+        title="Utilisateurs"
+        subtitle={`${items.length} compte${items.length > 1 ? "s" : ""} · ${blocked} bloqué${blocked > 1 ? "s" : ""}`}
+        actions={<Button fullWidth={false} icon={Plus} onClick={() => setCreateOpen(true)}>Créer un compte</Button>}
+      />
 
       <div className="mb-4 flex items-center gap-2">
         <div className="relative max-w-md flex-1">
@@ -78,12 +84,13 @@ export default function AdminUsersPage() {
                   <th className="pb-3 pr-3">KYC</th>
                   <th className="pb-3 pr-3 text-right">Transactions</th>
                   <th className="pb-3 pr-3">Membre depuis</th>
-                  <th className="pb-3">Statut</th>
+                  <th className="pb-3 pr-3">Statut</th>
+                  <th className="pb-3 text-right">Gérer</th>
                 </tr>
               </thead>
               <tbody>
                 {state === "loading"
-                  ? [0, 1, 2, 3].map((i) => <tr key={i} className="border-t border-white"><td colSpan={6} className="py-3"><div className="h-4 animate-pulse rounded bg-white" /></td></tr>)
+                  ? [0, 1, 2, 3].map((i) => <tr key={i} className="border-t border-white"><td colSpan={7} className="py-3"><div className="h-4 animate-pulse rounded bg-white" /></td></tr>)
                   : pageItems.map((u) => (
                       <tr key={u.id} onClick={() => setSelected(u.id)} className="cursor-pointer border-t border-white text-[13px] hover:bg-white/60">
                         <td className="py-3 pr-3">
@@ -94,7 +101,8 @@ export default function AdminUsersPage() {
                         <td className="py-3 pr-3">{u.kyc_complete ? <span className="inline-flex items-center gap-1 text-[12px] font-bold text-green"><BadgeCheck className="size-4" strokeWidth={2.2} />Vérifié</span> : <span className="text-[12px] text-gray-500">Incomplet</span>}</td>
                         <td className="py-3 pr-3 text-right font-bold text-ink">{u.transactions_count}</td>
                         <td className="py-3 pr-3 text-gray-500">{fdate(u.created_at)}</td>
-                        <td className="py-3"><StatusPill tone={u.is_blocked ? "soon" : "live"}>{u.is_blocked ? "Bloqué" : "Actif"}</StatusPill></td>
+                        <td className="py-3 pr-3"><StatusPill tone={u.is_blocked ? "soon" : "live"}>{u.is_blocked ? "Bloqué" : "Actif"}</StatusPill></td>
+                        <td className="py-3 text-right"><span className="inline-flex items-center gap-1 text-[11.5px] font-bold text-blue-600">Gérer <ChevronRight className="size-4" strokeWidth={2.4} /></span></td>
                       </tr>
                     ))}
               </tbody>
@@ -105,6 +113,7 @@ export default function AdminUsersPage() {
       )}
 
       <AdminUserSheet userId={selected} onClose={() => setSelected(null)} onChanged={load} />
+      <CreateUserSheet open={createOpen} onClose={() => setCreateOpen(false)} onCreated={load} />
     </div>
   );
 }

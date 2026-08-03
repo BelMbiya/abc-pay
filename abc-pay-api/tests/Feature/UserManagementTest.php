@@ -32,6 +32,16 @@ class UserManagementTest extends TestCase
         return ['Authorization' => 'Bearer '.app(JwtService::class)->issueAdminAccess($admin)];
     }
 
+    public function test_admin_cree_un_compte(): void
+    {
+        $res = $this->postJson('/api/v1/admin/users', [
+            'phone' => '+243810009999', 'name' => 'Nouveau Client',
+        ], $this->adminHeaders())->assertCreated();
+
+        $this->assertSame('+243810009999', $res->json('data.phone'));
+        $this->assertNotNull(User::where('phone', '+243810009999')->first());
+    }
+
     public function test_admin_liste_les_utilisateurs(): void
     {
         User::factory()->count(3)->create();

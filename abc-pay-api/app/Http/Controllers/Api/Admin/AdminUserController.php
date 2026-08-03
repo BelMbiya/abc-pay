@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CreateUserRequest;
 use App\Models\User;
 use App\Services\Identity\Exceptions\UserActionException;
 use App\Services\Identity\UserManagementService;
@@ -21,6 +22,11 @@ class AdminUserController extends Controller
         $q = $request->query('q');
 
         return response()->json(['data' => $this->users->list(is_string($q) ? $q : null)]);
+    }
+
+    public function store(CreateUserRequest $request): JsonResponse
+    {
+        return response()->json(['data' => $this->users->create($request->validated())], 201);
     }
 
     public function show(User $user): JsonResponse

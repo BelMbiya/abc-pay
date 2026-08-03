@@ -44,6 +44,16 @@ export async function fetchUser(id: number): Promise<AdminUserDetail> {
   return api.get<AdminUserDetail>(`/api/v1/admin/users/${id}`, auth());
 }
 
+export interface CreateUserInput {
+  phone: string;
+  name?: string;
+  email?: string;
+}
+
+export async function createUser(input: CreateUserInput): Promise<AdminUserDetail> {
+  return api.post<AdminUserDetail>("/api/v1/admin/users", input, auth());
+}
+
 export async function blockUser(id: number, reason?: string): Promise<AdminUserDetail> {
   return api.post<AdminUserDetail>(`/api/v1/admin/users/${id}/block`, { reason }, auth());
 }

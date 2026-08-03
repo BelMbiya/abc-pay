@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\Admin\AdminTransactionController;
 use App\Http\Controllers\Api\Admin\EstablishmentAdminController;
 use App\Http\Controllers\Api\Admin\FraudAdminController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
+use App\Http\Controllers\Api\Admin\SupportAdminController;
+use App\Http\Controllers\Api\SupportController;
 use App\Http\Controllers\Api\StaffDashboardController;
 use App\Http\Controllers\Api\StaffMemberController;
 use App\Http\Controllers\Api\StaffSettlementController;
@@ -43,6 +45,10 @@ Route::prefix('v1')->group(function () {
         Route::post('transactions', [TransactionController::class, 'store'])->middleware('throttle:payment');
         Route::get('notifications', [NotificationController::class, 'index']);
         Route::post('notifications/read', [NotificationController::class, 'read']);
+        // Support & sécurité du compte (payeur)
+        Route::get('support/tickets', [SupportController::class, 'index']);
+        Route::post('support/tickets', [SupportController::class, 'store']);
+        Route::post('me/lock', [SupportController::class, 'lock']);
     });
 
     // Super-admin abc pay — protégé par l'auth admin
@@ -61,11 +67,15 @@ Route::prefix('v1')->group(function () {
         Route::post('fraud/{flag}/block', [FraudAdminController::class, 'block']);
         // Gestion des comptes utilisateurs
         Route::get('users', [AdminUserController::class, 'index']);
+        Route::post('users', [AdminUserController::class, 'store']);
         Route::get('users/{user}', [AdminUserController::class, 'show']);
         Route::post('users/{user}/block', [AdminUserController::class, 'block']);
         Route::post('users/{user}/unblock', [AdminUserController::class, 'unblock']);
         Route::post('users/{user}/disconnect', [AdminUserController::class, 'disconnect']);
         Route::delete('users/{user}', [AdminUserController::class, 'destroy']);
+        // Support & litiges
+        Route::get('support', [SupportAdminController::class, 'index']);
+        Route::post('support/{ticket}/respond', [SupportAdminController::class, 'respond']);
     });
 
     // Back-office établissement — protégé par l'auth staff (scopé à son établissement)
@@ -82,5 +92,8 @@ Route::prefix('v1')->group(function () {
         Route::get('dashboard', [StaffDashboardController::class, 'index']);
         Route::get('members', [StaffMemberController::class, 'index']);
         Route::post('members', [StaffMemberController::class, 'store']);
+        // Support (l'établissement ouvre/consulte ses tickets)
+        Route::get('support/tickets', [SupportController::class, 'index']);
+        Route::post('support/tickets', [SupportController::class, 'store']);
     });
 });
