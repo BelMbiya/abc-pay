@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, RefreshCw } from "lucide-react";
+import { Search, RefreshCw, QrCode, ChevronDown } from "lucide-react";
 import { StatusPill, Pagination, usePagination } from "@/components/ui";
 import { PageHeader } from "@/components/backoffice/StatCard";
 import { money } from "@/lib/money";
@@ -37,6 +37,7 @@ export default function PaiementsPage() {
   const [channel, setChannel] = useState("all");
   const [status, setStatus] = useState("all");
   const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD);
+  const [showQr, setShowQr] = useState(false);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -86,7 +87,22 @@ export default function PaiementsPage() {
 
       {getStaffUser()?.establishment_id ? (
         <div className="mb-5">
-          <EstablishmentQrCard refCode={getStaffUser()!.establishment_id} name={rows[0]?.establishment ?? "Votre établissement"} />
+          <button
+            type="button"
+            onClick={() => setShowQr((v) => !v)}
+            aria-expanded={showQr}
+            aria-controls="qr-paiement"
+            className="inline-flex items-center gap-2 rounded-[12px] bg-gray-100 px-4 py-2.5 text-[13px] font-bold text-ink transition-colors hover:bg-gray-300/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <QrCode className="size-[18px] text-blue-600" strokeWidth={2} />
+            QR de paiement
+            <ChevronDown className={`size-4 text-gray-500 transition-transform ${showQr ? "rotate-180" : ""}`} strokeWidth={2.4} />
+          </button>
+          {showQr ? (
+            <div id="qr-paiement" className="mt-3">
+              <EstablishmentQrCard refCode={getStaffUser()!.establishment_id} name={rows[0]?.establishment ?? "Votre établissement"} />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
