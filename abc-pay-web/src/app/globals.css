@@ -82,3 +82,103 @@
     letter-spacing: -0.02em;
   }
 }
+
+/* =====================================================================
+   Landing (bienvenue) — animations LÉGÈRES (CSS pur, 0 lib, GPU-friendly).
+   Tout est désactivé sous prefers-reduced-motion (accessibilité + éco).
+   ===================================================================== */
+@layer utilities {
+  /* Flottement doux d'éléments décoratifs / cartes */
+  @keyframes abc-float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-14px); }
+  }
+  @keyframes abc-float-sm {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+  }
+  /* Halo qui respire */
+  @keyframes abc-glow {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50%      { opacity: 0.9;  transform: scale(1.08); }
+  }
+  /* Dégradé animé (position, pas de repaint coûteux) */
+  @keyframes abc-gradient {
+    0%, 100% { background-position: 0% 50%; }
+    50%      { background-position: 100% 50%; }
+  }
+  /* Bandeau opérateurs défilant */
+  @keyframes abc-marquee {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+  /* Reflet qui balaie un bouton / badge */
+  @keyframes abc-shimmer {
+    from { background-position: -160% 0; }
+    to   { background-position: 260% 0; }
+  }
+  /* Tracé qui se dessine (flux de paiement) */
+  @keyframes abc-dash {
+    to { stroke-dashoffset: 0; }
+  }
+
+  .animate-float     { animation: abc-float 6s ease-in-out infinite; }
+  .animate-float-sm  { animation: abc-float-sm 4.5s ease-in-out infinite; }
+  .animate-glow      { animation: abc-glow 7s ease-in-out infinite; }
+  .animate-marquee   { animation: abc-marquee 26s linear infinite; }
+  .animate-dash      { stroke-dasharray: 220; stroke-dashoffset: 220; animation: abc-dash 2.4s ease-out forwards; }
+
+  /* Dégradé animé réutilisable pour le hero */
+  .bg-grad-hero {
+    background-image: linear-gradient(135deg, #0F1B30 0%, #0F3E8A 55%, #1857B8 100%);
+    background-size: 160% 160%;
+    animation: abc-gradient 16s ease infinite;
+  }
+
+  /* Reveal au scroll (piloté par IntersectionObserver → .is-visible) */
+  .reveal {
+    opacity: 0;
+    transform: translateY(26px);
+    transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+  }
+  .reveal.is-visible { opacity: 1; transform: none; }
+
+  /* Texte en dégradé or (titres d'accent) */
+  .text-grad-gold {
+    background-image: linear-gradient(100deg, #FFC24B, #F5A623 45%, #FFD98A);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Cartes « glass » (dark) — recommandation skill fintech, adaptée à la charte navy */
+  .glass {
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .glass-strong {
+    background: rgba(255, 255, 255, 0.09);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  /* Grille fine décorative (fond de sections sombres) */
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  /* Lueur douce derrière un élément clé */
+  .text-glow { text-shadow: 0 0 32px rgba(255, 194, 75, 0.28); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float, .animate-float-sm, .animate-glow, .animate-marquee,
+  .animate-dash, .bg-grad-hero { animation: none !important; }
+  .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+}

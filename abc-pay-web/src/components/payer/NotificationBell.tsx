@@ -97,8 +97,11 @@ export function NotificationCenter({ token, ready, className = "" }: { token: st
       >
         <Bell className="size-[18px]" strokeWidth={2} />
         {unread > 0 ? (
-          <span className="absolute -right-1 -top-1 flex min-w-[16px] items-center justify-center rounded-full bg-red px-1 text-[9px] font-extrabold text-white">
-            {unread > 9 ? "9+" : unread}
+          <span
+            aria-label={`${unread} non lues`}
+            className="absolute -right-1 -top-1 flex h-[16px] min-w-[16px] max-w-[30px] items-center justify-center rounded-full bg-red px-[3px] text-[9px] font-extrabold leading-none text-white tabular-nums ring-2 ring-white"
+          >
+            {unread > 99 ? "99+" : unread}
           </span>
         ) : null}
       </button>

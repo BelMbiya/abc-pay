@@ -1,0 +1,40 @@
+# abc pay
+
+> The Connected Money — plateforme de paiement pour la République démocratique du Congo (RDC).
+> abc pay permet d'envoyer, recevoir et payer avec tous les opérateurs mobile money, et de régler
+> les frais de scolarité (programme phare « Tuition ») avec un reçu numérique instantané.
+
+abc pay est une application web (Next.js) adossée à une API (Laravel). Trois espaces :
+un espace payeur (parents, étudiants, particuliers), un back-office pour les établissements
+scolaires, et un espace super-admin. Langue : français. Pays desservi : RDC (Kinshasa).
+
+## Proposition de valeur
+- Paiements du quotidien : envois entre proches, réception d'argent, paiement de services, scan de QR.
+- Programme phare « Tuition » : paiement des frais de scolarité (minerval, frais académiques, inscription).
+- Aucun frais à la charge du payeur pour la Tuition : le montant est payé à l'exact.
+- Reçu numérique instantané, téléchargeable et partageable, reconnu par l'établissement.
+- Réconciliation par matricule et reversements pour les établissements partenaires.
+- Sécurité fintech : paiements chiffrés, montants recalculés côté serveur, abc pay ne conserve pas les fonds.
+
+## Opérateurs et moyens de paiement pris en charge
+M-Pesa, Airtel Money, Orange Money, Africell Money, carte Visa, virement.
+
+## Pages publiques
+- /bienvenue : page d'accueil (présentation, Tuition, établissements, sécurité).
+- /comment-ca-marche : fonctionnement pas à pas.
+- /pourquoi : raisons de choisir abc pay.
+- /tarification : grille tarifaire.
+- /faq : questions fréquentes.
+- /connexion : connexion payeur (numéro de téléphone).
+- /etablissement-connexion : accès back-office établissement.
+- /conditions, /confidentialite : mentions légales.
+
+## Pour les établissements (écoles, instituts, universités)
+Les établissements peuvent digitaliser l'encaissement de la scolarité sans matériel :
+back-office temps réel (encaissé, impayés, taux de recouvrement), réconciliation par matricule,
+reversements. Contact partenariat : partenariat@abcpay.cd.
+
+## Ce qu'abc pay n'est pas
+abc pay n'est pas une banque et ne conserve pas les fonds des utilisateurs :
+les paiements sont acheminés vers le bénéficiaire. abc pay n'est pas le registre des élèves ;
+la réconciliation se fait par matricule côté établissement.
