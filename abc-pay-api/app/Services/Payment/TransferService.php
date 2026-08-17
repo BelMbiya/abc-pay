@@ -17,6 +17,9 @@ use Illuminate\Support\Facades\DB;
  */
 class TransferService
 {
+    /** Plafond CUMULÉ journalier = plafond par opération × ce facteur (LBC/FT). */
+    private const DAILY_CAP_FACTOR = 3;
+
     public function __construct(
         private readonly ReceiptService $receipts,
         private readonly NotificationService $notifications,
@@ -113,11 +116,30 @@ class TransferService
         if ($amountUsd > $cap) {
             return 'Plafond de transfert dépassé ('.number_format($cap, 0, ',', ' ').' $).';
         }
+        // Plafond CUMULÉ journalier (LBC/FT) : total des transferts confirmés du jour + celui-ci.
+        $dailyCap = $cap * self::DAILY_CAP_FACTOR;
+        if (($this->confirmedTodayUsd($user) + $amountUsd) > $dailyCap) {
+            return 'Plafond journalier de transfert dépassé ('.number_format($dailyCap, 0, ',', ' ').' $).';
+        }
         if ($data['type'] === 'send' && ! empty($data['counterparty_phone']) && $data['counterparty_phone'] === $user->phone) {
             return 'Destinataire invalide : vous ne pouvez pas vous envoyer de l\'argent.';
         }
 
         return null;
+    }
+
+    /** Somme (USD) des transferts sortants confirmés de l'utilisateur pour la journée courante. */
+    private function confirmedTodayUsd(User $user): float
+    {
+        $rows = Transaction::query()
+            ->where('user_id', $user->id)
+            ->where('direction', 'debit')
+            ->whereIn('type', ['send', 'service'])
+            ->where('status', 'confirmee')
+            ->whereDate('created_at', now()->toDateString())
+            ->get(['amount', 'currency']);
+
+        return (float) $rows->sum(fn (Transaction $t) => $this->settings->convert((float) $t->amount, $t->currency ?: 'USD', 'USD'));
     }
 
     private function record(User $user, array $data, float $amount, string $currency, string $status, ?string $idem, ?string $failure = null): Transaction

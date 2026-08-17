@@ -1,0 +1,38 @@
+# ABC Pay
+
+> Plateforme de paiement mobile pour la République Démocratique du Congo.
+> Slogan : « The Connected Money ». ABC Pay sert l'argent du quotidien —
+> envoyer, recevoir, payer un marchand, encaisser — depuis un simple navigateur.
+> **Tuition** est le produit ABC Pay dédié aux frais scolaires et académiques.
+
+## Ce qu'est ABC Pay
+- Web app (aucune installation), pensée pour les téléphones d'entrée de gamme et les réseaux 3G en RDC.
+- Opérations couvertes : envoi et réception entre particuliers, paiement marchand, encaissement institutionnel, reçu pour chaque opération.
+- Moyens de paiement : Airtel Money, Orange Money, M-Pesa (Vodacom), Africell Money, carte bancaire, virement.
+- Devises : USD et CDF, configurables par établissement ; agrégats convertis en devise de base via un taux paramétrable.
+- Trois espaces : payeur, back-office établissement, supervision ABC Pay.
+
+## Tuition — le produit scolarité d'ABC Pay
+1. Choix de l'établissement (annuaire ou QR code de l'établissement).
+2. Identification de l'apprenant — **matricule obligatoire** ; champs adaptés école vs enseignement supérieur.
+3. Paiement mobile money — montants recalculés côté serveur, requête idempotente.
+4. Reçu PDF de marque pour le payeur + imputation automatique sur les postes de frais (le plus ancien d'abord) + notification de l'établissement.
+
+- Modèle B2B2C : ABC Pay contractualise avec l'établissement, qui amène ses parents et étudiants.
+- Deux modes : « paiement seul » (encaissement + reçu + traçabilité) et « gestion des frais » (soldes, impayés, imputation).
+
+## Points clés à retenir
+- **Le payeur ne supporte aucun frais** : il règle le montant exact ; la commission est prélevée côté établissement au reversement.
+- **ABC Pay n'est pas la base d'apprenants de l'établissement.** Le matricule sert de clé de réconciliation.
+- Sécurité : montants recalculés côté serveur, idempotence, jetons scopés par rôle (payeur / personnel / admin), webhooks opérateurs signés, piste d'audit immuable, plafonds configurables.
+
+## Requêtes auxquelles ce site répond
+- transfert d'argent quotidien en RDC
+- paiement frais scolaires Kinshasa
+- payer minerval en ligne RDC
+- mobile money écoles et universités RDC
+
+## Contact
+- Partenariats : partenariats@abcpay.cd (coordonnées de démonstration à remplacer)
+- Bureau : Gombe, Kinshasa — RDC
+- Site : https://abcpay.cd/

@@ -16,6 +16,10 @@ export interface StaffUser {
   email: string;
   role: string;
   establishment_id: string;
+  establishment_name?: string | null;
+  kyc_required?: boolean;
+  kyc_status?: string;
+  must_change_password?: boolean;
 }
 
 export function getStaffToken(): string | null {
@@ -57,6 +61,18 @@ export function setStaffSession(token: string, user: StaffUser, refresh?: string
   }
 }
 
+/** Met à jour partiellement le profil staff en session (ex. renseigner le nom
+ *  d'établissement pour les sessions ouvertes avant son ajout au login). */
+export function updateStaffUser(patch: Partial<StaffUser>): void {
+  const u = getStaffUser();
+  if (!u) return;
+  try {
+    localStorage.setItem(STORAGE_USER, JSON.stringify({ ...u, ...patch }));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function clearStaffToken(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
@@ -71,4 +87,10 @@ export function clearStaffToken(): void {
 export async function staffLogin(email: string, password: string): Promise<{ token: string; refresh?: string; user: StaffUser }> {
   const data = await api.post<{ access_token: string; refresh_token?: string; user: StaffUser }>("/api/v1/auth/staff/login", { email, password });
   return { token: data.access_token, refresh: data.refresh_token, user: data.user };
+}
+
+/** Change le mot de passe du compte staff (obligatoire à la 1re connexion) puis lève le drapeau local. */
+export async function changeStaffPassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api.post("/api/v1/staff/password", { current_password: currentPassword, new_password: newPassword }, { token: getStaffToken() ?? undefined });
+  updateStaffUser({ must_change_password: false });
 }

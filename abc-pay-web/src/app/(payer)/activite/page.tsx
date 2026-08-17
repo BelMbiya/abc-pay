@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { GraduationCap, ArrowUpRight, ArrowDownLeft, Zap, Download, Inbox, RefreshCw, Search } from "lucide-react";
+import { GraduationCap, ArrowUpRight, ArrowDownLeft, Zap, Download, Inbox, RefreshCw, Search, Undo2 } from "lucide-react";
 import { money, toBase } from "@/lib/money";
 import { useToast, Pagination, usePagination } from "@/components/ui";
-import { fetchMyTransactions, channelLabel, txTitle, txSign, TX_TYPES, type MyTransaction } from "@/lib/transactions-api";
+import { RefundRequestSheet } from "@/components/RefundRequestSheet";
+import { fetchMyTransactions, requestMyRefund, channelLabel, txTitle, txSign, TX_TYPES, type MyTransaction } from "@/lib/transactions-api";
 import { downloadReceipt, type ReceiptData, type ReceiptKind } from "@/lib/receipt";
 import { PERIODS, inPeriod, DEFAULT_PERIOD, type Period } from "@/lib/period";
 
@@ -54,6 +55,7 @@ export default function ActivitePage() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [txs, setTxs] = useState<MyTransaction[]>([]);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [refundTx, setRefundTx] = useState<MyTransaction | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD);
   const [q, setQ] = useState("");
@@ -186,8 +188,9 @@ export default function ActivitePage() {
               const Icon = ICON[t.type] ?? GraduationCap;
               const st = STATUS[t.status] ?? { label: t.status, className: "text-gray-500" };
               const credit = t.direction === "credit";
+              const refundable = t.status === "confirmee" && t.direction !== "credit";
               return (
-                <button key={t.id} type="button" onClick={() => handleDownload(t)} disabled={downloading === t.id} className="group flex items-center gap-3 border-b border-gray-100 py-3 text-left last:border-b-0 disabled:opacity-60">
+                <div key={t.id} className="flex items-center gap-3 border-b border-gray-100 py-3 last:border-b-0">
                   <span className={`flex size-[38px] shrink-0 items-center justify-center rounded-xl ${credit ? "bg-success-bg text-green" : "bg-gray-100 text-blue-600"}`}>
                     <Icon className="size-[17px]" strokeWidth={2} />
                   </span>
@@ -196,20 +199,37 @@ export default function ActivitePage() {
                     <div className="truncate text-[11px] text-gray-500">
                       {fdate(t.created_at)} · <span className={st.className}>{st.label}</span>{t.receipt_number ? ` · ${t.receipt_number}` : ""}
                     </div>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <button type="button" onClick={() => handleDownload(t)} disabled={downloading === t.id} className="inline-flex items-center gap-1 rounded-pill bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-blue-700 hover:bg-gray-300/40 disabled:opacity-60">
+                        <Download className="size-3" strokeWidth={2.4} />{downloading === t.id ? "…" : "Reçu"}
+                      </button>
+                      {refundable ? (
+                        <button type="button" onClick={() => setRefundTx(t)} className="inline-flex items-center gap-1 rounded-pill bg-fee-bg px-2.5 py-1 text-[11px] font-bold text-gold-600 hover:opacity-80">
+                          <Undo2 className="size-3" strokeWidth={2.4} />Demander un remboursement
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-0.5">
-                    <span className={`font-display text-[13.5px] font-extrabold ${credit ? "text-green" : "text-ink"}`}>{txSign(t)}{money(t.total, t.currency)}</span>
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-blue-600 opacity-0 transition-opacity group-hover:opacity-100">
-                      <Download className="size-3" strokeWidth={2.4} />{downloading === t.id ? "…" : "Reçu"}
-                    </span>
-                  </div>
-                </button>
+                  <span className={`shrink-0 self-start font-display text-[13.5px] font-extrabold ${credit ? "text-green" : "text-ink"}`}>{txSign(t)}{money(t.total, t.currency)}</span>
+                </div>
               );
             })}
           </div>
           <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPage={setPage} />
           </>
         )
+      ) : null}
+
+      {refundTx ? (
+        <RefundRequestSheet
+          open={!!refundTx}
+          onClose={() => setRefundTx(null)}
+          title={txTitle(refundTx)}
+          amount={refundTx.total}
+          currency={refundTx.currency}
+          onSubmit={(reason) => requestMyRefund(refundTx.id, reason)}
+          onDone={load}
+        />
       ) : null}
     </div>
   );

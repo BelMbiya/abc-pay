@@ -39,6 +39,10 @@ class User extends Authenticatable
             'profile_completed_at' => 'datetime',
             'is_blocked' => 'boolean',
             'sessions_revoked_at' => 'datetime',
+            'kyc_submitted_at' => 'datetime',
+            'kyc_reviewed_at' => 'datetime',
+            'kyc_ocr_match' => 'boolean',
+            'must_change_password' => 'boolean',
         ];
     }
 

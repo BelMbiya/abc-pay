@@ -1,16 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { Wallet, TrendingUp, Percent, Banknote, RefreshCw } from "lucide-react";
 import { StatCard, PageHeader } from "@/components/backoffice/StatCard";
 import { fmt } from "@/lib/api";
 import { money } from "@/lib/money";
 import { fetchStaffDashboard, CHANNEL_COLORS, type EstablishmentDashboard } from "@/lib/dashboard-api";
+import { getStaffUser, updateStaffUser } from "@/lib/staff-auth";
 
 export default function DashboardPage() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [d, setD] = useState<EstablishmentDashboard | null>(null);
+  const [estName, setEstName] = useState<string | null>(null);
+
+  // Nom de l'établissement connecté (session locale → repli, corrige les anciennes sessions).
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- init depuis localStorage
+  useEffect(() => setEstName(getStaffUser()?.establishment_name ?? null), []);
+
+  // Le dashboard porte toujours le nom à jour → source prioritaire (indépendante de la session).
+  const establishmentName = d?.establishment_name ?? estName;
+
+  // Auto-réparation : réinjecte le nom dans la session (corrige le rail/avatar au prochain
+  // rechargement pour les sessions ouvertes avant l'ajout du nom au login).
+  useEffect(() => {
+    if (d?.establishment_name) updateStaffUser({ establishment_name: d.establishment_name });
+  }, [d?.establishment_name]);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -37,8 +51,8 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto w-full max-w-[1100px] px-5 py-6 md:px-8 md:py-8">
       <PageHeader
-        title="Tableau de bord"
-        subtitle="Vue en temps réel de votre établissement"
+        title={establishmentName ?? "Tableau de bord"}
+        subtitle={establishmentName ? "Tableau de bord — vue en temps réel" : "Vue en temps réel de votre établissement"}
         actions={
           <button type="button" onClick={load} aria-label="Actualiser" className="flex size-[42px] items-center justify-center rounded-[12px] bg-gray-100 text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <RefreshCw className={`size-[17px] ${state === "loading" ? "animate-spin" : ""}`} strokeWidth={2.2} />
@@ -95,37 +109,6 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-          </div>
-
-          <div className="mt-4 rounded-2xl bg-gray-100 p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-display text-[14px] font-bold text-ink">Impayés</h2>
-              <Link href="/etablissement/impayes" className="text-[11px] font-bold text-blue-600 hover:underline">Voir tout</Link>
-            </div>
-            {(d?.unpaid.length ?? 0) === 0 ? (
-              <p className="py-6 text-center text-[13px] text-gray-500">Aucun impayé 🎉</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[440px] border-collapse">
-                  <thead>
-                    <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-gray-500">
-                      <th className="pb-3 pr-3">Apprenant</th>
-                      <th className="pb-3 pr-3">Classe / Promotion</th>
-                      <th className="pb-3 text-right">Solde</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d!.unpaid.map((u) => (
-                      <tr key={u.id} className="border-t border-white text-[13px]">
-                        <td className="py-3 pr-3 font-bold text-ink">{u.name}</td>
-                        <td className="py-3 pr-3 text-gray-500">{u.group}</td>
-                        <td className="py-3 text-right font-bold text-gold-600">{money(u.balance)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </>
       )}

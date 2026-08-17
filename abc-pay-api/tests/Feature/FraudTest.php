@@ -45,7 +45,10 @@ class FraudTest extends TestCase
 
         $flag = FraudFlag::first();
         $this->assertNotNull($flag);
-        $this->assertSame('large_amount', $flag->rule);
+        // Le moteur enrichi peut remonter un signal plus fort (nouveau bénéficiaire,
+        // gros montant, compte neuf…) : on vérifie qu'un signalement pertinent est ouvert.
+        $this->assertContains($flag->rule, ['large_amount', 'new_beneficiary', 'new_account_high']);
+        $this->assertGreaterThanOrEqual(55, $flag->score);
         $this->assertSame('open', $flag->status);
 
         $res = $this->getJson('/api/v1/admin/fraud', $this->adminHeaders())->assertOk();

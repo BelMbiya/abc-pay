@@ -64,8 +64,24 @@ class NotificationsTest extends TestCase
             'login_email' => 'dir@test.cd', 'login_password' => 'secret123',
         ]);
         $staff = User::where('email', 'dir@test.cd')->firstOrFail();
+        // Établissement pleinement vérifié : identité de la direction approuvée + KYB complet.
+        $staff->forceFill(['kyc_status' => 'approved'])->save();
+        $estab = \App\Models\Establishment::find($created['id']);
+        foreach (\App\Services\Tenancy\EstablishmentDocuments::requiredKeys($estab) as $type) {
+            \App\Models\EstablishmentDocument::create(['establishment_id' => $estab->id, 'type' => $type, 'status' => 'approved']);
+        }
 
-        // Paiement Tuition (payeur non connecté).
+        // L'établissement définit son barème (obligatoire avant tout encaissement) :
+        // une ligne « Minerval » à 150. C'est ce barème relationnel qui pilote le paiement.
+        $feeType = \App\Models\FeeType::create([
+            'establishment_id' => $created['id'], 'name' => 'Minerval', 'frequency' => 'annuel', 'is_optional' => false,
+        ]);
+        \App\Models\FeeSchedule::create([
+            'establishment_id' => $created['id'], 'fee_type_id' => $feeType->id,
+            'academic_group' => null, 'amount' => 150, 'currency' => 'USD',
+        ]);
+
+        // Paiement Tuition (payeur non connecté) : 100 ≤ 150 (barème) → accepté.
         $this->postJson('/api/v1/payments', [
             'establishment_id' => $created['id'], 'student_name' => 'Jean',
             'student_matricule' => 'M-1', 'fee_type' => 'Minerval', 'channel' => 'mpesa', 'amount' => 100,

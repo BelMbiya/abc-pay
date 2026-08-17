@@ -1,38 +1,52 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { AdminSidebar, NAV } from "./AdminSidebar";
-import { ToastProvider } from "@/components/ui";
+import { AdminNotificationBell } from "./AdminNotificationBell";
+import { ToastProvider, ConfirmProvider } from "@/components/ui";
+import { adminCan } from "@/lib/admin-auth";
 import { cn } from "@/lib/cn";
 
 /** Coquille super-admin abc pay — même disposition (rail desktop / drawer mobile). */
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [nav, setNav] = useState(NAV);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- filtre RBAC client (localStorage)
+  useEffect(() => setNav(NAV.filter((i) => adminCan(i.perm))), []);
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/admin" ? pathname === href : pathname.startsWith(href));
 
   return (
     <ToastProvider>
+      <ConfirmProvider>
       <div className="min-h-dvh bg-white md:flex">
         <AdminSidebar className="hidden md:flex" />
 
-        <div className="flex min-h-dvh flex-1 flex-col">
+        <div className="relative flex min-h-dvh flex-1 flex-col">
           <header className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 md:hidden">
             {/* eslint-disable-next-line @next/next/no-img-element -- logo statique */}
             <img src="/logo.png" alt="abc pay" width={28} height={28} className="size-7 rounded-lg object-contain" />
             <span className="font-display text-[14px] font-bold text-ink">abc pay · Admin</span>
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              aria-label="Ouvrir le menu"
-              className="ml-auto flex size-[38px] items-center justify-center rounded-xl bg-gray-100 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            >
-              <Menu className="size-5" strokeWidth={2.2} />
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <AdminNotificationBell />
+              <button
+                type="button"
+                onClick={() => setOpen(true)}
+                aria-label="Ouvrir le menu"
+                className="flex size-[38px] items-center justify-center rounded-xl bg-gray-100 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <Menu className="size-5" strokeWidth={2.2} />
+              </button>
+            </div>
           </header>
+
+          {/* Cloche du fil admin — contrôle flottant desktop (rail sans topbar) */}
+          <div className="pointer-events-none absolute right-5 top-5 z-20 hidden md:block">
+            <div className="pointer-events-auto"><AdminNotificationBell /></div>
+          </div>
 
           <main className="flex-1">{children}</main>
         </div>
@@ -64,7 +78,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 <X className="size-[18px]" strokeWidth={2.2} />
               </button>
             </div>
-            {NAV.map((item) => {
+            {nav.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.href);
               return (
@@ -85,6 +99,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
       </div>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

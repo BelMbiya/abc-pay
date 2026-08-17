@@ -20,6 +20,9 @@ class UpdateEstablishmentRequest extends SecureFormRequest
             'currency' => ['sometimes', 'in:USD,CDF'],
             'billing_mode' => ['sometimes', 'in:payment_only,fee_management'],
             'is_active' => ['sometimes', 'boolean'],
+            // Réception des reversements (passerelle CinetPay).
+            'payout_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'payout_method' => ['sometimes', 'nullable', 'string', 'max:30'],
         ];
     }
 }

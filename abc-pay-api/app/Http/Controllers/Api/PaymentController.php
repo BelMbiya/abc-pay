@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\PaymentQuoteRequest;
 use App\Http\Requests\TuitionPaymentRequest;
 use App\Models\Establishment;
+use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Identity\JwtService;
 use App\Services\Payment\TuitionPaymentService;
@@ -28,6 +29,8 @@ class PaymentController extends Controller
     public function quote(PaymentQuoteRequest $request): JsonResponse
     {
         $establishment = Establishment::findOrFail($request->validated('establishment_id'));
+        // Pas de devis (ni fuite du taux de commission) pour un établissement non encaissable.
+        $this->payments->assertReceivable($establishment);
 
         return response()->json([
             'data' => $this->payments->quote($establishment, (float) $request->validated('amount')),
@@ -48,6 +51,22 @@ class PaymentController extends Controller
         );
 
         return response()->json(['data' => $result], 201);
+    }
+
+    /**
+     * Statut d'un paiement (pour la page de retour après redirection CinetPay).
+     * Renvoie le statut + le numéro de reçu — JAMAIS le qr_token (secret). L'UUID
+     * de transaction n'est pas devinable ; aucune donnée sensible n'est exposée.
+     */
+    public function status(Transaction $transaction): JsonResponse
+    {
+        // Fallback webhook : si encore en attente, on demande le statut réel à CinetPay.
+        $transaction = $this->payments->refreshStatus($transaction);
+
+        return response()->json(['data' => [
+            'status' => $transaction->status, // pending | confirmee | failed
+            'receipt' => ['number' => $transaction->receipt?->number],
+        ]]);
     }
 
     /**

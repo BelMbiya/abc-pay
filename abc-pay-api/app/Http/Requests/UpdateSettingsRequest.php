@@ -15,6 +15,8 @@ class UpdateSettingsRequest extends SecureFormRequest
             'currency' => ['sometimes', 'in:USD,CDF'],
             'usd_cdf_rate' => ['sometimes', 'numeric', 'min:1', 'max:1000000'],
             'transfer_cap' => ['sometimes', 'numeric', 'min:1', 'max:100000000'],
+            'landing_faq_limit' => ['sometimes', 'integer', 'min:1', 'max:50'],
+            'landing_reviews_limit' => ['sometimes', 'integer', 'min:1', 'max:50'],
         ];
     }
 }

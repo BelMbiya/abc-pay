@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { TopBar } from "./TopBar";
 import { SideMenu } from "./SideMenu";
 import { Sidebar } from "./Sidebar";
-import { ToastProvider } from "@/components/ui";
+import { ToastProvider, ConfirmProvider } from "@/components/ui";
 import { NotificationBell } from "@/components/payer/NotificationBell";
 
 /**
@@ -18,6 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <ToastProvider>
+      <ConfirmProvider>
       <div className="min-h-dvh bg-white md:flex">
         {/* Rail desktop */}
         <Sidebar className="hidden md:flex" />
@@ -37,6 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
         </div>
       </div>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

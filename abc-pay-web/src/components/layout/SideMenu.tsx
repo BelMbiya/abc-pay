@@ -41,6 +41,7 @@ const GROUPS: { label?: string; items: Item[] }[] = [
     items: [
       { label: "FAQ · Aide", icon: HelpCircle, href: "/faq" },
       { label: "Conditions d'utilisation", icon: FileText, href: "/conditions" },
+      { label: "Politique de remboursement", icon: FileText, href: "/remboursement" },
       { label: "Confidentialité", icon: Lock, href: "/confidentialite" },
     ],
   },

@@ -9,6 +9,7 @@
  * rester synchronisées avec eux. Unique endroit où ces hex sont admis hors du thème.
  */
 import { jsPDF } from "jspdf";
+import { generateQrDataUrl, receiptVerifyUrl } from "./qr";
 
 // Palette (miroir des tokens globals.css) — [R, G, B].
 const C = {
@@ -48,6 +49,7 @@ export interface ReceiptData {
   feeLabel?: string; // ligne de frais (optionnelle ; absente = aucun frais payeur)
   feeValue?: string;
   dateLabel?: string; // horodatage lisible ; défaut = maintenant (fr-FR)
+  qrToken?: string; // jeton d'authenticité (reçus Tuition) → QR + code de vérification
 }
 
 /** Métadonnées de gabarit par type d'action (sous-titre, badge, libellé du montant). */
@@ -217,22 +219,54 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<jsPDF> {
     y += rowH;
   });
 
-  // ── Pied ────────────────────────────────────────────────────
+  // ── Pied + bloc d'authenticité (QR + code) ──────────────────
   const date = d.dateLabel ?? new Date().toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" });
-  const footY = cardY + cardH + 10;
+  const footY = cardY + cardH + 8;
   doc.setDrawColor(C.gray300[0], C.gray300[1], C.gray300[2]);
   doc.setLineWidth(0.2);
   doc.line(M, footY, rightX, footY);
+
+  // QR de vérification (à droite) — encode le lien de vérification (jeton serveur).
+  let leftW = W - 2 * M;
+  if (d.qrToken) {
+    try {
+      const qr = await generateQrDataUrl(receiptVerifyUrl(d.qrToken), 240);
+      const qs = 22;
+      const qx = rightX - qs;
+      const qy = footY + 4;
+      doc.addImage(qr, "PNG", qx, qy, qs, qs);
+      ink(C.gray500);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.6);
+      doc.text("VÉRIFIER CE REÇU", qx + qs / 2, qy + qs + 3, { align: "center" });
+      leftW = qx - M - 6;
+    } catch {
+      /* QR indisponible : reçu émis sans QR (la voie manuelle reste possible) */
+    }
+  }
 
   ink(C.gray500);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
   doc.text(`Émis le ${date}`, M, footY + 6);
-  doc.text("Reçu généré par abc pay — RDC. Conserve-le comme preuve de paiement.", M, footY + 11, {
-    maxWidth: W - 2 * M,
-  });
-  ink(C.gray300);
-  doc.text("Ce reçu atteste l'encaissement via la plateforme abc pay.", M, footY + 18, { maxWidth: W - 2 * M });
+  doc.text("Conserve ce reçu comme preuve de paiement.", M, footY + 11, { maxWidth: leftW });
+
+  if (d.qrToken) {
+    const code = d.qrToken.slice(0, 8).toUpperCase();
+    ink(C.gray700);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(`Authenticité — N° ${d.number} · Code ${code}`, M, footY + 18, { maxWidth: leftW });
+    ink(C.gray300);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("Scanne le QR, ou saisis ces valeurs sur la page « Vérifier un reçu » d'abc pay.", M, footY + 23, {
+      maxWidth: leftW,
+    });
+  } else {
+    ink(C.gray300);
+    doc.text("Ce reçu atteste l'encaissement via la plateforme abc pay.", M, footY + 18, { maxWidth: leftW });
+  }
 
   return doc;
 }

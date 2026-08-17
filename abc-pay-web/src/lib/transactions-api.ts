@@ -102,3 +102,8 @@ export async function fetchMyTransactions(): Promise<MyTransaction[]> {
   const data = await api.get<MyTransaction[]>("/api/v1/transactions");
   return Array.isArray(data) ? data : [];
 }
+
+/** Le payeur ouvre une demande de remboursement sur SA propre opération. */
+export async function requestMyRefund(transactionId: string, reason: string): Promise<void> {
+  await api.post("/api/v1/refunds", { transaction_id: transactionId, reason });
+}

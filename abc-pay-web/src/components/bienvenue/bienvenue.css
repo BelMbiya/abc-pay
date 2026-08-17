@@ -1,0 +1,136 @@
+/* Styles de la landing /bienvenue.
+   Le design d'origine est 100 % inline. On garde ici : les keyframes (référencées
+   par `animation:` dans le markup), les resets bornés à #page, et surtout les
+   TOKENS de thème (clair/sombre). Le markup a été tokenisé : surfaces claires,
+   textes et bordures pointent vers ces variables ; le bleu de marque (#00279C /
+   #001A63) et l'or (#FCB326) restent littéraux car ils fonctionnent déjà sur fond
+   sombre. Polices Sora/Inter via les variables next/font. */
+
+@keyframes wUp { from { opacity: 0; transform: translateY(0.7em); } to { opacity: 1; transform: none; } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes ring { 0% { transform: scale(0.65); opacity: 0.85; } 100% { transform: scale(2.4); opacity: 0; } }
+@keyframes spinSlow { to { transform: rotate(360deg); } }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-11px); } }
+@keyframes tick { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+/* -------- Palette claire (défaut) -------- */
+#page {
+  --s-page: #ffffff;      /* fond de page          */
+  --s-card: #ffffff;      /* cartes                */
+  --s-soft: #F4F7FF;      /* fonds doux            */
+  --s-panel: #E7EBF7;     /* panneaux / tuiles     */
+  --s-gold-soft: #FFF6E6; /* pastille or           */
+  --s-ok-soft: #E7F7EF;   /* pastille verte        */
+  --s-info-soft: #E9F4FE; /* pastille info         */
+  --t-ink: #0B1A44;       /* texte principal       */
+  --t-muted: #55618A;     /* texte secondaire      */
+  --t-faint: #9AA6C6;     /* libellés discrets     */
+  --t-brand: #00279C;     /* texte de marque       */
+  --t-link: #0B3FD6;      /* liens survolés        */
+  --t-gold: #B87D07;      /* texte or foncé        */
+  --t-ok: #12855A;        /* texte succès          */
+  --ln: #DDE4F5;          /* bordures              */
+
+  /* `clip` (et non `hidden`) : masque le débordement horizontal SANS créer de
+     conteneur de défilement — sinon la nav `position:sticky` ne colle plus. */
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+  background: var(--s-page);
+}
+
+/* #19 — centre le glyphe ☰ dans son carré arrondi (il n'avait pas d'alignement). */
+#page #burger {
+  align-items: center;
+  justify-content: center;
+}
+
+/* #19 — barre utilitaire bleue : équilibre les groupes (libellé à gauche,
+   téléphone/langue à droite) au lieu de tout coller à gauche. */
+#page #topbar {
+  justify-content: space-between;
+}
+
+/* Responsive : on masque le bandeau utilitaire bleu au-dessus du hero sur mobile
+   (breakpoint aligné sur la logique JS, < 760px). */
+@media (max-width: 759px) {
+  #page #utility-bar {
+    display: none !important;
+  }
+}
+
+/* #20 — filigrane « abc pay » (texte navy très transparent) invisible en sombre :
+   on l'éclaircit en mode sombre pour qu'il redevienne lisible derrière les photos. */
+#page[data-theme="dark"] [style*="rgba(11,26,68,.07)"] {
+  color: rgba(233, 238, 249, 0.06) !important;
+}
+@media (prefers-color-scheme: dark) {
+  #page:not([data-theme="light"]) [style*="rgba(11,26,68,.07)"] {
+    color: rgba(233, 238, 249, 0.06) !important;
+  }
+}
+
+/* -------- Palette sombre (auto via système, sauf si l'utilisateur force le clair) -------- */
+@media (prefers-color-scheme: dark) {
+  #page:not([data-theme="light"]) {
+    --s-page: #0A1020; --s-card: #131A2E; --s-soft: #171F35; --s-panel: #1E2740;
+    --s-gold-soft: #2A2411; --s-ok-soft: #12271C; --s-info-soft: #0F2233;
+    --t-ink: #EAEEF9; --t-muted: #AAB4CF; --t-faint: #8A96B4;
+    --t-brand: #8FB4FF; --t-link: #A9C4FF; --t-gold: #FCB326; --t-ok: #34D399;
+    --ln: #2A3550;
+  }
+}
+/* -------- Palette sombre (choix explicite de l'utilisateur) -------- */
+#page[data-theme="dark"] {
+  --s-page: #0A1020; --s-card: #131A2E; --s-soft: #171F35; --s-panel: #1E2740;
+  --s-gold-soft: #2A2411; --s-ok-soft: #12271C; --s-info-soft: #0F2233;
+  --t-ink: #EAEEF9; --t-muted: #AAB4CF; --t-faint: #8A96B4;
+  --t-brand: #8FB4FF; --t-link: #A9C4FF; --t-gold: #FCB326; --t-ok: #34D399;
+  --ln: #2A3550;
+}
+
+#page a { color: var(--t-brand); text-decoration: none; }
+#page a:hover { color: var(--t-link); }
+#page summary { list-style: none; cursor: pointer; }
+#page summary::-webkit-details-marker { display: none; }
+#page ::selection { background: #FCB326; color: #00279C; }
+
+/* Focus des champs (l'attribut style-focus du design a été retiré) */
+#page input:focus,
+#page textarea:focus,
+#page select:focus {
+  outline: none;
+  border-color: var(--t-brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--t-brand) 22%, transparent);
+}
+
+html:has(#page) { scroll-behavior: smooth; }
+
+/* Segmented control « Comment vous recontacter ? » (WhatsApp / Email / Appel).
+   État piloté par la classe .is-active (via classList) — jamais par du style inline
+   en JS, bloqué par la CSP à nonce. */
+#page .abc-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+#page .abc-seg__btn {
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 11px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--ln);
+  background: var(--s-card);
+  color: var(--t-ink);
+  cursor: pointer;
+  transition: background .2s ease, color .2s ease, border-color .2s ease;
+}
+#page .abc-seg__btn:hover { border-color: var(--t-brand); }
+#page .abc-seg__btn.is-active {
+  background: #00279C;
+  border-color: #00279C;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #page *, #page *::before, #page *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

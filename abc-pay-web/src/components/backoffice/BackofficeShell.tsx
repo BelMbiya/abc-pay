@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Menu, X, LifeBuoy, LogOut } from "lucide-react";
 import { BackofficeSidebar, NAV } from "./BackofficeSidebar";
 import { StaffNotificationBell } from "./StaffNotificationBell";
-import { ToastProvider } from "@/components/ui";
+import { ToastProvider, ConfirmProvider } from "@/components/ui";
 import { SupportSheet } from "@/components/payer/SupportSheet";
 import { establishment } from "@/lib/backoffice-data";
 import { clearStaffToken } from "@/lib/staff-auth";
@@ -35,6 +35,7 @@ export function BackofficeShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastProvider>
+      <ConfirmProvider>
       <div className="min-h-dvh bg-white md:flex">
         <BackofficeSidebar className="hidden md:flex" />
 
@@ -151,6 +152,7 @@ export function BackofficeShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <SupportSheet open={supportOpen} onClose={() => setSupportOpen(false)} api={staffSupportApi} />
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

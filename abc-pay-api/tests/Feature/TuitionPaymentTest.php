@@ -105,6 +105,130 @@ class TuitionPaymentTest extends TestCase
         $this->assertSame($learner->id, Transaction::first()->learner_id);
     }
 
+    public function test_montant_superieur_au_frais_selectionne_est_refuse(): void
+    {
+        // Barème apparié : Minerval=250, Frais académiques=350.
+        $e = Establishment::factory()->create();
+
+        // 300 ≤ frais le plus élevé (350) MAIS > Minerval (250) → refusé (cap PAR frais).
+        $this->postJson('/api/v1/payments', $this->payload($e, ['fee_type' => 'Minerval', 'amount' => 300]))
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'validation_failed');
+        $this->assertDatabaseCount('transactions', 0);
+
+        // Le même montant 300 est accepté pour « Frais académiques » (cap 350).
+        $this->postJson('/api/v1/payments', $this->payload($e, ['fee_type' => 'Frais académiques', 'amount' => 300]))
+            ->assertCreated();
+    }
+
+    public function test_etablissement_sans_bareme_ne_peut_pas_encaisser_ni_apparaitre(): void
+    {
+        // Aucun barème (colonnes vides, aucun fee_schedule).
+        $e = Establishment::factory()->create(['name' => 'Institut Sans Bareme', 'fees' => [], 'presets' => []]);
+
+        // Pas de barème → paiement refusé (règle métier).
+        $this->postJson('/api/v1/payments', $this->payload($e, ['amount' => 100]))
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'validation_failed');
+        $this->assertDatabaseCount('transactions', 0);
+
+        // …et il n'apparaît pas dans la liste des écoles (non encaissable).
+        $this->getJson('/api/v1/establishments?query=Sans%20Bareme')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    public function test_le_bareme_relationnel_pilote_le_paiement_et_la_liste(): void
+    {
+        // Colonnes legacy vides : le barème vient des fee_schedules édités par l'établissement.
+        $e = Establishment::factory()->create(['name' => 'Institut Bareme Reel', 'fees' => [], 'presets' => []]);
+        $type = FeeType::create([
+            'establishment_id' => $e->id, 'name' => 'Frais de laboratoire', 'frequency' => 'annuel', 'is_optional' => false,
+        ]);
+        \App\Models\FeeSchedule::create([
+            'establishment_id' => $e->id, 'fee_type_id' => $type->id,
+            'academic_group' => null, 'amount' => 400, 'currency' => 'USD',
+        ]);
+
+        // La ligne de barème personnalisée apparaît bien à la liste (donc au paiement) — #8.
+        $this->getJson('/api/v1/establishments?query=Bareme%20Reel')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.fees.0', 'Frais de laboratoire');
+
+        // Plafond = barème : 400 accepté, 401 refusé.
+        $this->postJson('/api/v1/payments', $this->payload($e, ['fee_type' => 'Frais de laboratoire', 'amount' => 400]))
+            ->assertCreated();
+        $this->postJson('/api/v1/payments', $this->payload($e, ['fee_type' => 'Frais de laboratoire', 'amount' => 401]))
+            ->assertStatus(422);
+    }
+
+    public function test_etablissement_en_verification_est_masque_et_ne_recoit_pas(): void
+    {
+        // Établissement avec barème, MAIS direction en cours de vérification KYC.
+        $e = Establishment::factory()->create(['name' => 'Institut En Verif', 'fees' => ['Minerval'], 'presets' => [250]]);
+        $dir = \App\Models\User::factory()->create();
+        $dir->forceFill(['kyc_status' => 'pending'])->save();
+        \App\Models\EstablishmentStaff::create(['establishment_id' => $e->id, 'user_id' => $dir->id, 'role' => 'direction', 'kyc_required' => true]);
+
+        // N'apparaît pas dans la liste des écoles…
+        $this->getJson('/api/v1/establishments?query=En%20Verif')->assertOk()->assertJsonCount(0, 'data');
+        // …et ne peut pas recevoir de paiement.
+        $this->postJson('/api/v1/payments', $this->payload($e))->assertStatus(422);
+        $this->assertDatabaseCount('transactions', 0);
+
+        // Une fois PLEINEMENT vérifié (identité direction + KYB complet) : réapparaît et encaisse.
+        $dir->forceFill(['kyc_status' => 'approved'])->save();
+        foreach (\App\Services\Tenancy\EstablishmentDocuments::requiredKeys($e->fresh()) as $type) {
+            \App\Models\EstablishmentDocument::create(['establishment_id' => $e->id, 'type' => $type, 'status' => 'approved']);
+        }
+        $this->getJson('/api/v1/establishments?query=En%20Verif')->assertOk()->assertJsonCount(1, 'data');
+        $this->postJson('/api/v1/payments', $this->payload($e))->assertCreated();
+    }
+
+    public function test_etablissement_suspendu_ne_peut_ni_recevoir_ni_etre_devise(): void
+    {
+        // Suspendu (is_active=false) mais avec barème : ne doit RIEN encaisser, même en appel direct.
+        $e = Establishment::factory()->create(['is_active' => false, 'fees' => ['Minerval'], 'presets' => [250]]);
+
+        $this->postJson('/api/v1/payments', $this->payload($e))->assertStatus(422);
+        $this->assertDatabaseCount('transactions', 0);
+
+        // Le devis aussi est refusé (ne fuite pas le taux de commission d'un suspendu).
+        $this->postJson('/api/v1/payments/quote', ['establishment_id' => $e->id, 'amount' => 250])->assertStatus(422);
+    }
+
+    public function test_type_de_frais_hors_bareme_est_refuse(): void
+    {
+        $e = Establishment::factory()->create(['fees' => ['Minerval'], 'presets' => [250]]);
+
+        // Un libellé inconnu ne doit pas se replier sur le plafond le plus élevé : refus net.
+        $this->postJson('/api/v1/payments', $this->payload($e, ['fee_type' => 'Frais fantôme', 'amount' => 250]))
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'validation_failed');
+        $this->assertDatabaseCount('transactions', 0);
+    }
+
+    public function test_kyb_incomplet_bloque_l_encaissement(): void
+    {
+        // Établissement soumis au KYB (direction kyc_required), identité approuvée, MAIS docs incomplets.
+        $e = Establishment::factory()->create(['name' => 'Institut KYB', 'fees' => ['Minerval'], 'presets' => [250]]);
+        $dir = \App\Models\User::factory()->create();
+        $dir->forceFill(['kyc_status' => 'approved'])->save();
+        \App\Models\EstablishmentStaff::create(['establishment_id' => $e->id, 'user_id' => $dir->id, 'role' => 'direction', 'kyc_required' => true]);
+
+        // KYB incomplet → masqué de la liste + encaissement refusé.
+        $this->getJson('/api/v1/establishments?query=Institut%20KYB')->assertOk()->assertJsonCount(0, 'data');
+        $this->postJson('/api/v1/payments', $this->payload($e))->assertStatus(422);
+
+        // Tous les documents obligatoires approuvés → devient encaissable.
+        foreach (\App\Services\Tenancy\EstablishmentDocuments::requiredKeys($e->fresh()) as $type) {
+            \App\Models\EstablishmentDocument::create(['establishment_id' => $e->id, 'type' => $type, 'status' => 'approved']);
+        }
+        $this->getJson('/api/v1/establishments?query=Institut%20KYB')->assertOk()->assertJsonCount(1, 'data');
+        $this->postJson('/api/v1/payments', $this->payload($e))->assertCreated();
+    }
+
     public function test_canal_invalide_renvoie_422(): void
     {
         $e = Establishment::factory()->create();
@@ -114,6 +238,21 @@ class TuitionPaymentTest extends TestCase
             ->assertJsonPath('error.code', 'validation_failed');
 
         $this->assertDatabaseCount('transactions', 0);
+    }
+
+    public function test_rejeu_idempotence_anonyme_masque_le_qr_token(): void
+    {
+        $e = Establishment::factory()->create();
+        $headers = ['Idempotency-Key' => 'anon-key-xyz'];
+
+        // Création : le qr_token (secret du reçu) est livré.
+        $first = $this->postJson('/api/v1/payments', $this->payload($e), $headers)->assertCreated();
+        $this->assertNotNull($first->json('data.receipt.qr_token'));
+
+        // Rejeu anonyme (clé devinée/observée) : même reçu, mais le SECRET n'est pas re-livré.
+        $second = $this->postJson('/api/v1/payments', $this->payload($e), $headers)->assertCreated();
+        $this->assertSame($first->json('data.receipt.number'), $second->json('data.receipt.number'));
+        $this->assertNull($second->json('data.receipt.qr_token'));
     }
 
     public function test_idempotence_ne_cree_quune_transaction(): void

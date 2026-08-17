@@ -12,4 +12,5 @@ export { Receipt } from "./Receipt";
 export { ActionTile } from "./ActionTile";
 export { BottomSheet } from "./BottomSheet";
 export { ToastProvider, useToast } from "./Toast";
+export { ConfirmProvider, useConfirm } from "./ConfirmDialog";
 export { Pagination, usePagination } from "./Pagination";

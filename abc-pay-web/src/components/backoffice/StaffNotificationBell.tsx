@@ -16,5 +16,7 @@ export function StaffNotificationBell({ className = "" }: { className?: string }
   // eslint-disable-next-line react-hooks/set-state-in-effect -- init client
   useEffect(() => setToken(getStaffToken()), []);
 
-  return <NotificationCenter token={token} ready={!!token} className={className} />;
+  // Endpoint STAFF (scope établissement) — surtout PAS le /notifications payeur,
+  // qui renvoie 401 avec un token staff et finissait par déconnecter la session.
+  return <NotificationCenter token={token} ready={!!token} className={className} basePath="/api/v1/staff" />;
 }

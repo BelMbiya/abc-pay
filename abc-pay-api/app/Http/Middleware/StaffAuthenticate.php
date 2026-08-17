@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Establishment;
+use App\Models\EstablishmentStaff;
 use App\Models\User;
 use App\Services\Identity\JwtService;
 use Closure;
@@ -52,6 +53,27 @@ class StaffAuthenticate
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('establishment', $establishment);
         $request->attributes->set('staff_role', $claims['role'] ?? null);
+
+        // GATE KYC : un compte marqué « vérification requise » (créé après la mise en place)
+        // ne peut accéder à l'espace / agir tant que son identité n'est pas APPROUVÉE.
+        // Seul l'écran de vérification (/staff/kyc) reste accessible pour se mettre en règle.
+        // GATE 1 — mot de passe : à la 1re connexion (ou après reset admin), le compte ne peut
+        // RIEN faire d'autre que changer son mot de passe.
+        if ($user->must_change_password && $request->path() !== 'api/v1/staff/password') {
+            return response()->json([
+                'error' => ['code' => 'must_change_password', 'message' => 'Vous devez changer votre mot de passe avant de continuer.'],
+            ], 403);
+        }
+
+        // GATE 2 — KYC. Allowlist EXACTE des seules routes accessibles à un compte non vérifié
+        // (L1 : éviter un match large `api/*/staff/kyc` qui ouvrirait toute future route similaire).
+        $kycRoutes = ['api/v1/staff/kyc'];
+        $staff = EstablishmentStaff::where('user_id', $user->id)->where('establishment_id', $establishment->id)->first();
+        if ($staff && $staff->kyc_required && $user->kyc_status !== 'approved' && ! in_array($request->path(), $kycRoutes, true)) {
+            return response()->json([
+                'error' => ['code' => 'kyc_required', 'message' => 'Vérification d\'identité requise pour accéder à votre espace.', 'kyc_status' => $user->kyc_status ?? 'none'],
+            ], 403);
+        }
 
         return $next($request);
     }

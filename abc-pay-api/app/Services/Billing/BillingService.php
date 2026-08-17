@@ -122,6 +122,28 @@ class BillingService
         }
     }
 
+    /**
+     * Inverse une imputation (remboursement) : réduit le montant payé des postes
+     * (du plus récent au plus ancien) → le solde restant remonte d'autant.
+     */
+    public function reversePayment(Learner $learner, float $amount): void
+    {
+        $remaining = round($amount, 2);
+
+        foreach ($learner->feeItems()->orderByDesc('created_at')->get() as $item) {
+            if ($remaining <= 0) {
+                break;
+            }
+            $paid = round((float) $item->amount_paid, 2);
+            if ($paid <= 0) {
+                continue;
+            }
+            $take = min($remaining, $paid);
+            $item->update(['amount_paid' => round($paid - $take, 2)]);
+            $remaining = round($remaining - $take, 2);
+        }
+    }
+
     private function applySchedule(Learner $learner, FeeSchedule $schedule): void
     {
         $learner->feeItems()->firstOrCreate(

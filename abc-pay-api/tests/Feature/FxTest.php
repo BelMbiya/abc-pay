@@ -49,8 +49,9 @@ class FxTest extends TestCase
     {
         $this->patchJson('/api/v1/admin/settings', ['currency' => 'USD', 'usd_cdf_rate' => 2000], $this->adminHeaders())->assertOk();
 
-        $usd = Establishment::factory()->create(['currency' => 'USD', 'commission_rate' => 0]);
-        $cdf = Establishment::factory()->create(['currency' => 'CDF', 'commission_rate' => 0]);
+        $usd = Establishment::factory()->create(['currency' => 'USD', 'commission_rate' => 0]); // presets [150,250]
+        // Barème à l'échelle CDF (sinon le plafond « montant ≤ frais » refuse 4000 CDF).
+        $cdf = Establishment::factory()->create(['currency' => 'CDF', 'commission_rate' => 0, 'presets' => [10000, 20000]]);
         $this->pay($usd, 100);      // 100 USD
         $this->pay($cdf, 4000);     // 4000 CDF = 2 USD (taux 2000)
 

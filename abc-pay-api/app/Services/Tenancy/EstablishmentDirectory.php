@@ -28,19 +28,31 @@ class EstablishmentDirectory
                         ->orWhere('city', 'like', "%{$query}%");
                 });
             })
+            ->with(['feeSchedules.feeType', 'staff.user:id,kyc_status', 'documents'])
             ->orderBy('name')
             ->get()
-            ->map(fn (Establishment $e) => [
-                'id' => $e->id,
-                'name' => $e->name,
-                'type' => $e->type,
-                'level' => $e->level,
-                'city' => $e->city,
-                'code' => $e->merchant_code,
-                'currency' => $e->currency,
-                'fees' => $e->fees,
-                'presets' => $e->presets,
-            ])
+            // RÈGLE : un établissement non encaissable (suspendu, identité en cours de
+            // vérification, ou KYB incomplet quand il est exigé) n'apparaît pas dans la liste.
+            ->reject(fn (Establishment $e) => ! $e->canReceivePayments())
+            ->map(function (Establishment $e) {
+                $bareme = $e->resolvedBareme();
+
+                return [
+                    'id' => $e->id,
+                    'name' => $e->name,
+                    'type' => $e->type,
+                    'level' => $e->level,
+                    'city' => $e->city,
+                    'code' => $e->merchant_code,
+                    'currency' => $e->currency,
+                    'fees' => $bareme['fees'],
+                    'presets' => $bareme['presets'],
+                ];
+            })
+            // RÈGLE : un établissement sans barème n'est pas encaissable → on ne le
+            // propose pas au paiement (il n'apparaît pas dans la liste des écoles).
+            ->filter(fn (array $row) => $row['fees'] !== [])
+            ->values()
             ->all();
     }
 }

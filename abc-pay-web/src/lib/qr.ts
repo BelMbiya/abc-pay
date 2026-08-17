@@ -27,6 +27,15 @@ export function userReceiveUrl(phone: string, name?: string, origin = appOrigin(
   return `${origin}/scan?t=user&r=${encodeURIComponent(phone)}${n}`;
 }
 
+/**
+ * Lien QR de vérification d'authenticité d'un reçu.
+ * Encode le `qr_token` : scanné par n'importe quelle caméra, il ouvre la page
+ * publique de vérification qui interroge le serveur (source de vérité).
+ */
+export function receiptVerifyUrl(token: string, origin = appOrigin()): string {
+  return `${origin}/verifier-recu?t=${encodeURIComponent(token)}`;
+}
+
 /** Analyse un texte scanné et renvoie la cible abc pay, ou null. */
 export function parseAbcPayQr(text: string): QrTarget | null {
   if (!text) return null;

@@ -15,12 +15,15 @@ export interface AppNotification {
  * Récupère les notifications de l'utilisateur. `token` optionnel : session staff
  * (établissement) ou admin ; sinon le token global (payeur) est utilisé.
  */
-export async function fetchNotifications(token?: string): Promise<{ notifications: AppNotification[]; unread: number }> {
-  return api.get("/api/v1/notifications", token ? { token } : undefined);
+export async function fetchNotifications(
+  token?: string,
+  base = "/api/v1",
+): Promise<{ notifications: AppNotification[]; unread: number }> {
+  return api.get(`${base}/notifications`, token ? { token } : undefined);
 }
 
-export async function markNotificationsRead(token?: string): Promise<void> {
-  await api.post("/api/v1/notifications/read", {}, token ? { token } : undefined);
+export async function markNotificationsRead(token?: string, base = "/api/v1"): Promise<void> {
+  await api.post(`${base}/notifications/read`, {}, token ? { token } : undefined);
 }
 
 export const NOTIFY_EVENT = "abcpay:notifications";

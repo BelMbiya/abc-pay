@@ -6,7 +6,7 @@ import { ShieldCheck, LogOut, Coins } from "lucide-react";
 import { Button, Field, useToast } from "@/components/ui";
 import { PageHeader } from "@/components/backoffice/StatCard";
 import { getAdminUser, clearAdminToken, updateAdminProfile, type AdminUser } from "@/lib/admin-auth";
-import { fetchSettings, updateCurrency, updateRate, updateTransferCap, CURRENCIES } from "@/lib/settings-api";
+import { fetchSettings, updateCurrency, updateRate, updateTransferCap, updateLandingLimits, CURRENCIES } from "@/lib/settings-api";
 import { setCurrencyCode, setRate } from "@/lib/money";
 import { ApiError } from "@/lib/api";
 
@@ -28,15 +28,42 @@ export default function AdminParametresPage() {
   const [savingRate, setSavingRate] = useState(false);
   const [savingCap, setSavingCap] = useState(false);
 
+  const [faqLimit, setFaqLimit] = useState("8");
+  const [reviewsLimit, setReviewsLimit] = useState("6");
+  const [savingLimits, setSavingLimits] = useState(false);
+
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- init depuis localStorage + API */
     const u = getAdminUser();
     setAdmin(u);
     setName(u?.name ?? "");
     setEmail(u?.email ?? "");
-    fetchSettings().then((s) => { setCurrency(s.currency); setRateInput(String(s.usd_cdf_rate)); setCap(String(s.transfer_cap)); }).catch(() => {});
+    fetchSettings().then((s) => {
+      setCurrency(s.currency);
+      setRateInput(String(s.usd_cdf_rate));
+      setCap(String(s.transfer_cap));
+      setFaqLimit(String(s.landing_faq_limit));
+      setReviewsLimit(String(s.landing_reviews_limit));
+    }).catch(() => {});
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
+
+  const saveLimits = async () => {
+    setSavingLimits(true);
+    try {
+      const s = await updateLandingLimits({
+        landing_faq_limit: Math.min(50, Math.max(1, Number(faqLimit) || 8)),
+        landing_reviews_limit: Math.min(50, Math.max(1, Number(reviewsLimit) || 6)),
+      });
+      setFaqLimit(String(s.landing_faq_limit));
+      setReviewsLimit(String(s.landing_reviews_limit));
+      showToast("Limites d'affichage mises à jour");
+    } catch {
+      showToast("Changement impossible");
+    } finally {
+      setSavingLimits(false);
+    }
+  };
 
   const saveCap = async () => {
     setSavingCap(true);
@@ -171,6 +198,43 @@ export default function AdminParametresPage() {
           <span className="text-[13px] font-bold text-gray-500">USD</span>
           <button type="button" disabled={savingCap} onClick={saveCap} className="rounded-[12px] bg-ink px-4 py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
             {savingCap ? "…" : "Enregistrer"}
+          </button>
+        </div>
+      </div>
+
+      {/* Limites d'affichage public (landing) */}
+      <div className="mb-4 rounded-2xl bg-gray-100 p-5">
+        <h2 className="mb-1.5 font-display text-[14px] font-bold text-ink">Affichage public (landing)</h2>
+        <p className="mb-3 text-[11.5px] leading-relaxed text-gray-500">Nombre maximum de questions FAQ et de témoignages affichés publiquement — évite une liste sans fin sur la page d&apos;accueil. Entre 1 et 50.</p>
+        <div className="flex flex-wrap items-end gap-4">
+          <div>
+            <label htmlFor="faq-limit" className="mb-1.5 block text-[12px] font-bold text-gray-700">Questions FAQ</label>
+            <input
+              id="faq-limit"
+              type="number"
+              min={1}
+              max={50}
+              inputMode="numeric"
+              value={faqLimit}
+              onChange={(e) => setFaqLimit(e.target.value)}
+              className="w-28 rounded-[12px] border-[1.5px] border-gray-100 bg-white px-3.5 py-2.5 text-[14px] font-bold text-ink focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label htmlFor="reviews-limit" className="mb-1.5 block text-[12px] font-bold text-gray-700">Témoignages</label>
+            <input
+              id="reviews-limit"
+              type="number"
+              min={1}
+              max={50}
+              inputMode="numeric"
+              value={reviewsLimit}
+              onChange={(e) => setReviewsLimit(e.target.value)}
+              className="w-28 rounded-[12px] border-[1.5px] border-gray-100 bg-white px-3.5 py-2.5 text-[14px] font-bold text-ink focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <button type="button" disabled={savingLimits} onClick={saveLimits} className="rounded-[12px] bg-ink px-4 py-2.5 text-[12.5px] font-bold text-white disabled:opacity-50">
+            {savingLimits ? "…" : "Enregistrer"}
           </button>
         </div>
       </div>

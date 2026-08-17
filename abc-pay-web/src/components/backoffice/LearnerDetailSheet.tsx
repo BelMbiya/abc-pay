@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { BellRing, FileText } from "lucide-react";
 import { BottomSheet, Button, StatusPill, useToast } from "@/components/ui";
 import { fmt } from "@/lib/api";
-import { remindLearner, type ApiLearner } from "@/lib/learners-api";
+import { remindLearner, fetchLearnerStatement, type ApiLearner, type LearnerStatement } from "@/lib/learners-api";
+import { LearnerStatementSheet } from "@/components/backoffice/LearnerStatementSheet";
 
 const STATUS: Record<string, { label: string; tone: "live" | "gold" | "soon" }> = {
   actif: { label: "Actif", tone: "live" },
@@ -16,9 +18,12 @@ const RELATION: Record<string, string> = { parent: "Parent", tuteur: "Tuteur", p
 /** Aperçu détaillé d'un apprenant (feuille coulissante). */
 export function LearnerDetailSheet({ learner, onClose }: { learner: ApiLearner | null; onClose: () => void }) {
   const { showToast } = useToast();
+  const [statement, setStatement] = useState<LearnerStatement | null>(null);
+  const [loadingStmt, setLoadingStmt] = useState(false);
   const st = learner ? (STATUS[learner.status] ?? STATUS.actif) : STATUS.actif;
 
   return (
+    <>
     <BottomSheet open={learner !== null} onClose={onClose} title={learner?.name ?? "Apprenant"}>
       {learner ? (
         <>
@@ -60,11 +65,30 @@ export function LearnerDetailSheet({ learner, onClose }: { learner: ApiLearner |
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-2">
-            <Button variant="outline" fullWidth icon={FileText} onClick={() => showToast("État de compte généré")}>État de compte</Button>
+            <Button
+              variant="outline"
+              fullWidth
+              icon={FileText}
+              disabled={loadingStmt}
+              onClick={async () => {
+                setLoadingStmt(true);
+                try {
+                  setStatement(await fetchLearnerStatement(learner.id));
+                } catch {
+                  showToast("Impossible de générer le relevé");
+                } finally {
+                  setLoadingStmt(false);
+                }
+              }}
+            >
+              État de compte
+            </Button>
             <Button fullWidth icon={BellRing} onClick={async () => { try { await remindLearner(learner.id); showToast(`Relance envoyée à ${learner.name}`); } catch { showToast("Échec de la relance"); } onClose(); }}>Relancer</Button>
           </div>
         </>
       ) : null}
     </BottomSheet>
+    <LearnerStatementSheet statement={statement} onClose={() => setStatement(null)} />
+    </>
   );
 }

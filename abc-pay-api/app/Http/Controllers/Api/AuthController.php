@@ -11,6 +11,9 @@ use App\Http\Requests\UpdateAdminProfileRequest;
 use App\Http\Requests\UpdateProfileRequest;
 use App\Services\Identity\AdminAuthService;
 use App\Services\Identity\AuthService;
+use App\Services\Identity\Exceptions\AccountBlockedException;
+use App\Services\Identity\Exceptions\AccountNotFoundException;
+use App\Services\Identity\Exceptions\EmailAlreadyUsedException;
 use App\Services\Identity\Exceptions\InvalidCredentialsException;
 use App\Services\Identity\Exceptions\InvalidPhoneTokenException;
 use App\Services\Identity\Exceptions\InvalidRefreshTokenException;
@@ -53,6 +56,32 @@ class AuthController extends Controller
         return response()->json(['data' => $this->adminAuth->updateProfile($request->user(), $request->validated())]);
     }
 
+    /** Rôle + permissions effectives de l'admin connecté (le front gate l'UI en conséquence). */
+    public function adminPermissions(Request $request): JsonResponse
+    {
+        $admin = $request->user();
+
+        return response()->json(['data' => [
+            'role' => $admin->role,
+            'permissions' => $admin->permissions(),
+            'must_change_password' => (bool) $admin->must_change_password,
+        ]]);
+    }
+
+    /** Changement de mot de passe admin (lève le gate `must_change_password`). */
+    public function changeAdminPassword(\App\Http\Requests\AdminPasswordRequest $request): JsonResponse
+    {
+        $admin = $request->user();
+        $data = $request->validated();
+
+        if (! $admin->password || ! \Illuminate\Support\Facades\Hash::check($data['current_password'], $admin->password)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['current_password' => 'Mot de passe actuel incorrect.']);
+        }
+        $admin->forceFill(['password' => $data['new_password'], 'must_change_password' => false])->save();
+
+        return response()->json(['data' => ['status' => 'changed']]);
+    }
+
     /** Connexion super-admin abc pay (email + mot de passe) → JWT admin. */
     public function adminLogin(AdminLoginRequest $request): JsonResponse
     {
@@ -85,11 +114,27 @@ class AuthController extends Controller
     public function firebase(FirebaseAuthRequest $request): JsonResponse
     {
         try {
-            $data = $this->auth->loginWithPhoneToken($request->validated('firebase_id_token'));
+            $data = $this->auth->loginWithPhoneToken(
+                $request->validated('firebase_id_token'),
+                $request->validated('intent') ?? 'login',
+                $request->validated('profile') ?? [],
+            );
         } catch (InvalidPhoneTokenException $e) {
             return response()->json([
                 'error' => ['code' => 'invalid_token', 'message' => 'Jeton d\'authentification invalide.'],
             ], 422);
+        } catch (AccountNotFoundException $e) {
+            return response()->json([
+                'error' => ['code' => 'account_not_found', 'message' => 'Aucun compte n\'existe pour ce numéro. Crée ton compte.'],
+            ], 404);
+        } catch (EmailAlreadyUsedException $e) {
+            return response()->json([
+                'error' => ['code' => 'email_taken', 'message' => 'Un compte existe déjà avec cet e-mail. Connecte-toi, ou inscris-toi avec une autre adresse.'],
+            ], 422);
+        } catch (AccountBlockedException $e) {
+            return response()->json([
+                'error' => ['code' => 'account_blocked', 'message' => 'Ce compte est bloqué. Contacte le support.'],
+            ], 403);
         }
 
         return response()->json(['data' => $data]);

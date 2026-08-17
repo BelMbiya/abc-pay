@@ -1,0 +1,25 @@
+# ABC Pay — https://abcpay.cd
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin-connexion
+Disallow: /etablissement
+Disallow: /etablissement-connexion
+Disallow: /profil
+Disallow: /activite
+
+# Crawlers IA / réponses génératives
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-User
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://abcpay.cd/sitemap.xml

@@ -53,7 +53,7 @@ export default function ReversementsPage() {
       ) : (
         <>
           <div className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-3">
-            <StatCard label="Net à reverser" value={`${money(data?.pending_net ?? 0)}`} icon={Wallet} tone="navy" hint="Semaine en cours, après commission" />
+            <StatCard label="Net à reverser" value={`${money(data?.pending_net ?? 0)}`} icon={Wallet} tone="navy" hint="En attente de reversement, après commission" />
             <StatCard label="Prochain reversement" value={data?.pending_period ?? "—"} icon={CalendarClock} hint="Période en attente" />
             <StatCard label="Total net (historique)" value={`${money(data?.total_net ?? 0)}`} icon={Banknote} hint="Cumul sur la période" />
           </div>

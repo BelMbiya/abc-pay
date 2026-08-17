@@ -63,13 +63,34 @@ export async function requestOtp(phone: string, containerId = "recaptcha-contain
   }
 }
 
-/** Vérifie le code et connecte l'utilisateur ; renvoie les JWT (accès + refresh) + le profil. */
-export async function verifyOtp(phone: string, code: string): Promise<{ token: string; refresh?: string; user: AuthUser }> {
+/** Identité fournie à l'INSCRIPTION (le compte n'est créé qu'avec, au minimum, le nom). */
+export interface SignupProfile {
+  name: string;
+  email?: string;
+  birth_date?: string;
+  gender?: string;
+  address?: string;
+  city?: string;
+  id_doc_type?: string;
+  id_doc_number?: string;
+}
+
+/**
+ * Vérifie le code et ouvre la session ; renvoie les JWT (accès + refresh) + le profil.
+ * - `intent="login"`  : le compte DOIT déjà exister (sinon `account_not_found`).
+ * - `intent="signup"` : INSCRIPTION délibérée → `profile` (nom obligatoire) crée le compte.
+ */
+export async function verifyOtp(
+  phone: string,
+  code: string,
+  intent: "login" | "signup" = "login",
+  profile?: SignupProfile,
+): Promise<{ token: string; refresh?: string; user: AuthUser }> {
   const idToken = firebaseEnabled ? await confirmFirebaseCode(code) : `fake:${phone}`;
 
   const data = await api.post<{ access_token: string; refresh_token?: string; user: AuthUser }>(
     "/api/v1/auth/firebase",
-    { firebase_id_token: idToken },
+    { firebase_id_token: idToken, intent, ...(intent === "signup" && profile ? { profile } : {}) },
     { idempotent: false },
   );
 

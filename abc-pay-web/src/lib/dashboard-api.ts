@@ -9,6 +9,7 @@ export interface WeekPoint { week: string; label: string; value: number }
 export interface ChannelSlice { channel: string; label: string; amount: number; pct: number }
 
 export interface EstablishmentDashboard {
+  establishment_name?: string;
   kpis: { expected: number; collected: number; recovery_rate: number; remaining: number; pending_net: number };
   weekly: WeekPoint[];
   by_channel: ChannelSlice[];

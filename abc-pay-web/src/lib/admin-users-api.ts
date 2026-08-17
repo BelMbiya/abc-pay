@@ -4,6 +4,7 @@
  */
 import { api } from "@/lib/api";
 import { getAdminToken } from "@/lib/admin-auth";
+import { type TxRow } from "@/lib/tx-views-api";
 
 export interface AdminUser {
   id: number;
@@ -42,6 +43,11 @@ export async function fetchUsers(q?: string): Promise<AdminUser[]> {
 
 export async function fetchUser(id: number): Promise<AdminUserDetail> {
   return api.get<AdminUserDetail>(`/api/v1/admin/users/${id}`, auth());
+}
+
+/** Trace COMPLÈTE des transactions d'un compte (suivi/audit). */
+export async function fetchUserTransactions(id: number): Promise<TxRow[]> {
+  return api.get<TxRow[]>(`/api/v1/admin/users/${id}/transactions`, auth());
 }
 
 export interface CreateUserInput {

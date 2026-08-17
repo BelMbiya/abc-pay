@@ -30,6 +30,12 @@ class SettingsController extends Controller
         if ($request->has('transfer_cap')) {
             $this->settings->setTransferCap((float) $request->validated('transfer_cap'));
         }
+        if ($request->has('landing_faq_limit')) {
+            $this->settings->setFaqLimit((int) $request->validated('landing_faq_limit'));
+        }
+        if ($request->has('landing_reviews_limit')) {
+            $this->settings->setReviewsLimit((int) $request->validated('landing_reviews_limit'));
+        }
 
         return response()->json(['data' => $this->settings->all()]);
     }

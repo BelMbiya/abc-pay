@@ -84,10 +84,11 @@ export function SendSheet({ open, onClose }: { open: boolean; onClose: () => voi
           </div>
           <Receipt
             amount={money(amount, currency)}
+            status="ENVOYÉ"
             rows={[
               { label: "Destinataire", value: name.trim() || phone || "-" },
               ...(name.trim() ? [{ label: "Numéro", value: phone }] : []),
-              { label: "Moyen de paiement", value: method },
+              { label: "Moyen", value: method },
             ]}
           />
           <Button className="mt-5" onClick={onClose}>Terminer</Button>

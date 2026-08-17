@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateEstablishmentLoginRequest;
 use App\Http\Requests\UpdateEstablishmentRequest;
 use App\Models\Establishment;
 use App\Services\Tenancy\EstablishmentProvisioningService;
+use App\Services\Tenancy\Exceptions\EstablishmentActionException;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -40,5 +41,17 @@ class EstablishmentAdminController extends Controller
     public function updateLogin(UpdateEstablishmentLoginRequest $request, Establishment $establishment): JsonResponse
     {
         return response()->json(['data' => $this->provisioning->updateLogin($establishment, $request->validated())]);
+    }
+
+    /** Supprime définitivement un établissement (refusé s'il a un historique de transactions). */
+    public function destroy(Establishment $establishment): JsonResponse
+    {
+        try {
+            $this->provisioning->delete($establishment);
+        } catch (EstablishmentActionException $e) {
+            return response()->json(['error' => ['code' => 'cannot_delete', 'message' => $e->getMessage()]], 422);
+        }
+
+        return response()->json(['data' => ['deleted' => true]]);
     }
 }

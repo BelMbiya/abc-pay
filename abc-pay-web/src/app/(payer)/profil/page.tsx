@@ -2,13 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Link2, LifeBuoy, LogOut, ShieldQuestion, ShieldAlert, User as UserIcon } from "lucide-react";
+import { BadgeCheck, Link2, LifeBuoy, LogOut, ShieldQuestion, ShieldAlert, Star, User as UserIcon } from "lucide-react";
 import { ListRow, VerifiedBadge, useToast } from "@/components/ui";
 import { useAuth } from "@/lib/auth-context";
 import { fetchMe, initials, type Profile } from "@/lib/profile-api";
 import { lockMyAccount } from "@/lib/support-api";
 import { PersonalInfoSheet } from "@/components/payer/PersonalInfoSheet";
 import { SupportSheet } from "@/components/payer/SupportSheet";
+import { ReviewSheet } from "@/components/payer/ReviewSheet";
+import { KycUploadSheet } from "@/components/payer/KycUploadSheet";
+import { fetchMyKyc, type KycStatusValue } from "@/lib/kyc-api";
+
+const KYC_SUBTITLE: Record<KycStatusValue, string> = {
+  none: "Vérifie ton identité avec ta pièce",
+  pending: "Vérification en cours",
+  approved: "Identité vérifiée ✓",
+  rejected: "Refusée — reprends la vérification",
+};
 
 export default function ProfilPage() {
   const router = useRouter();
@@ -17,6 +27,9 @@ export default function ProfilPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [kycOpen, setKycOpen] = useState(false);
+  const [kycStatus, setKycStatus] = useState<KycStatusValue>("none");
   const [confirmLock, setConfirmLock] = useState(false);
   const [locking, setLocking] = useState(false);
 
@@ -24,6 +37,7 @@ export default function ProfilPage() {
     fetchMe().then(setProfile).catch(() => {
       /* profil indisponible : on garde l'affichage minimal */
     });
+    fetchMyKyc().then((k) => setKycStatus(k.kyc_status)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -82,11 +96,31 @@ export default function ProfilPage() {
         </button>
       ) : null}
 
+      {/* Bandeau de vérification par PIÈCE d'identité (KYC documentaire) */}
+      {kycStatus !== "approved" ? (
+        <button
+          type="button"
+          onClick={() => setKycOpen(true)}
+          className={`mt-3 flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left ${kycStatus === "rejected" ? "bg-[#FDE7E8]" : kycStatus === "pending" ? "bg-gray-100" : "bg-fee-bg"}`}
+        >
+          <BadgeCheck className={`size-5 shrink-0 ${kycStatus === "rejected" ? "text-red" : kycStatus === "pending" ? "text-gray-500" : "text-gold-600"}`} strokeWidth={2.2} />
+          <div className="min-w-0 flex-1">
+            <div className={`text-[13px] font-bold ${kycStatus === "rejected" ? "text-red" : kycStatus === "pending" ? "text-ink" : "text-gold-600"}`}>
+              {kycStatus === "pending" ? "Vérification en cours" : kycStatus === "rejected" ? "Vérification refusée" : "Vérifie ton identité par pièce"}
+            </div>
+            <div className="text-[11.5px] text-gray-500">
+              {kycStatus === "pending" ? "Tes pièces sont en cours d'examen." : kycStatus === "rejected" ? "Reprends la vérification avec de nouvelles pièces." : "Dépose ta pièce d'identité et un selfie."}
+            </div>
+          </div>
+        </button>
+      ) : null}
+
       {/* Options */}
       <div className="mt-6 flex flex-col gap-2.5">
         <ListRow icon={UserIcon} title="Informations personnelles" subtitle="Ton identité et tes coordonnées" onClick={() => setInfoOpen(true)} />
-        <ListRow icon={BadgeCheck} title="KYC & vérification" subtitle={kyc ? "Compte vérifié" : "Vérifie ton identité"} onClick={() => setInfoOpen(true)} />
+        <ListRow icon={BadgeCheck} title="Vérification d'identité (pièce)" subtitle={KYC_SUBTITLE[kycStatus]} onClick={() => setKycOpen(true)} />
         <ListRow icon={LifeBuoy} title="Support & aide" subtitle="Ouvrir un ticket, litige, problème d'accès" onClick={() => setSupportOpen(true)} />
+        <ListRow icon={Star} title="Laisser un avis" subtitle="Ton témoignage peut apparaître sur notre page d'accueil" onClick={() => setReviewOpen(true)} />
         <ListRow icon={Link2} title="Comptes liés" subtitle="Mobile Money & banque connectés à ton compte" onClick={() => showToast("Bientôt disponible")} />
       </div>
 
@@ -118,7 +152,9 @@ export default function ProfilPage() {
       </button>
 
       <PersonalInfoSheet open={infoOpen} onClose={() => setInfoOpen(false)} onSaved={setProfile} />
+      <KycUploadSheet open={kycOpen} onClose={() => setKycOpen(false)} status={kycStatus} onDone={(rec) => setKycStatus(rec.kyc_status)} />
       <SupportSheet open={supportOpen} onClose={() => setSupportOpen(false)} />
+      <ReviewSheet open={reviewOpen} onClose={() => setReviewOpen(false)} />
     </div>
   );
 }

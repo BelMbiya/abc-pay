@@ -42,6 +42,7 @@ export default function TuitionPage() {
   const [schoolList, setSchoolList] = useState<School[]>(schools);
   const [school, setSchool] = useState<School | null>(null);
   const [apiReceipt, setApiReceipt] = useState<string | null>(null);
+  const [apiToken, setApiToken] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [busy, setBusy] = useState<null | "dl" | "sh">(null);
@@ -89,6 +90,21 @@ export default function TuitionPage() {
   // La commission abc pay est prélevée côté établissement (invisible pour le payeur).
   const total = amount;
   const fullName = [student.nom, student.postnom, student.prenom].filter(Boolean).join(" ");
+
+  // Plafond par frais : chaque type de frais a un montant (preset apparié) ; le
+  // payeur peut régler CE montant ou moins (paiement partiel), jamais plus.
+  const feeAmount = (f: string) => (school ? (school.presets[school.fees.indexOf(f)] ?? 0) : 0);
+  const feeMax = feeType && school ? feeAmount(feeType) : 0;
+  const selectFee = (f: string) => {
+    setFeeType(f);
+    setAmount(feeAmount(f)); // défaut = montant plein du frais
+  };
+  // Saisie LIBRE : on n'écrase pas la valeur (pas de clamp à chaque frappe, sinon
+  // toute édition dépassant transitoirement le max « remonte » au montant plein et
+  // empêche de saisir un montant partiel). Le dépassement est signalé plus bas et
+  // bloque « Continuer » ; le serveur recalcule/valide le plafond de toute façon.
+  const onAmount = (v: number) => setAmount(Math.max(0, v));
+  const overMax = feeMax > 0 && amount > feeMax;
   const txId = useMemo(() => "TUI-" + crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase(), []);
 
   const pickSchool = (s: School) => {
@@ -97,8 +113,10 @@ export default function TuitionPage() {
     goto("student");
   };
   const openFees = () => {
-    if (school && !feeType) setFeeType(school.fees[0]);
-    if (school && !amount) setAmount(school.presets[0]);
+    if (school && !feeType) {
+      setFeeType(school.fees[0]);
+      setAmount(feeAmount(school.fees[0]));
+    }
     goto("fees");
   };
   const pickMethod = (m: PaymentMethod) => {
@@ -107,20 +125,44 @@ export default function TuitionPage() {
   };
 
   /**
-   * « C'est moi » = l'étudiant connecté paie pour LUI-MÊME : on reprend son
-   * identité (celle saisie à l'étape élève) + le téléphone du compte, et la
-   * relation devient « Étudiant ».
+   * « C'est moi » (étape PAYEUR) = le payeur est la personne CONNECTÉE : on reprend
+   * son identité de session (nom du compte, découpé, + téléphone du compte).
    */
   const fillMyself = () => {
+    const parts = (user?.name ?? "").trim().split(/\s+/).filter(Boolean);
+    const [nom, postnom, prenom] = parts.length >= 3
+      ? [parts[0], parts[1], parts.slice(2).join(" ")]
+      : parts.length === 2
+        ? [parts[0], "", parts[1]]
+        : ["", "", parts[0] ?? ""];
     setPayer((p) => ({
       ...p,
-      nom: student.nom || p.nom,
-      postnom: student.postnom || p.postnom,
-      prenom: student.prenom || p.prenom,
+      nom: nom || p.nom,
+      postnom: postnom || p.postnom,
+      prenom: prenom || p.prenom,
       tel: user?.phone ?? p.tel,
-      relation: "Étudiant",
     }));
-    showToast("Tu paies pour toi-même (étudiant)");
+    showToast("Infos reprises de ton compte");
+  };
+
+  /**
+   * À l'étape ÉLÈVE : le compte connecté est lui-même l'étudiant → on reprend le
+   * nom de son profil. Si le profil est incomplet (aucun nom), on le SIGNALE.
+   */
+  const fillStudentFromMe = () => {
+    const name = (user?.name ?? "").trim();
+    if (!name) {
+      showToast("Profil incomplet : ajoute ton nom dans « Profil » pour te préremplir");
+      return;
+    }
+    const parts = name.split(/\s+/);
+    setStudent((s) => ({
+      ...s,
+      nom: parts[0] ?? "",
+      postnom: parts.length > 2 ? (parts[1] ?? "") : "",
+      prenom: parts.length > 2 ? parts.slice(2).join(" ") : (parts[1] ?? ""),
+    }));
+    showToast("Tes informations ont été reprises");
   };
   const submitPayment = async () => {
     if (!school || !method) return;
@@ -146,7 +188,14 @@ export default function TuitionPage() {
       goto("failed");
       return;
     }
+    // Passerelle CinetPay : on ouvre la page de paiement hébergée. La confirmation
+    // (et le reçu) arrivent ensuite via webhook — pas d'affichage de reçu ici.
+    if (res.redirectUrl) {
+      window.location.href = res.redirectUrl;
+      return;
+    }
     setApiReceipt(res.receiptNumber);
+    setApiToken(res.receiptToken);
     goto("receipt");
   };
 
@@ -163,6 +212,7 @@ export default function TuitionPage() {
       method: method.title,
       payer: `${[payer.nom, payer.postnom, payer.prenom].filter(Boolean).join(" ")} (${payer.relation})`,
       reference: reference || undefined,
+      qrToken: apiToken ?? undefined, // authenticité : QR + code de vérification sur le reçu
       // Aucun frais payeur (Tuition) → pas de ligne de frais dans le reçu.
     };
   };
@@ -259,6 +309,16 @@ export default function TuitionPage() {
             <BadgeCheck className="size-4 shrink-0" strokeWidth={2.2} />
             <span>{school.name} : code marchand <b>{school.code}</b></span>
           </div>
+          {user ? (
+            <button
+              type="button"
+              onClick={fillStudentFromMe}
+              className="mb-3 flex items-center gap-2 self-start rounded-pill border-[1.5px] border-blue-500 bg-blue-100 px-3.5 py-2 text-[12.5px] font-bold text-blue-700 transition-colors hover:bg-blue-500 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <UserCheck className="size-4" strokeWidth={2.2} />
+              C&apos;est moi — je suis l&apos;étudiant
+            </button>
+          ) : null}
           <div className="flex flex-col">
             {fieldSets[school.level].map((f) => (
               <Field
@@ -292,7 +352,7 @@ export default function TuitionPage() {
               className="mb-1 flex items-center gap-2 self-start rounded-pill border-[1.5px] border-blue-500 bg-blue-100 px-3.5 py-2 text-[12.5px] font-bold text-blue-700 transition-colors hover:bg-blue-500 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <UserCheck className="size-4" strokeWidth={2.2} />
-              C&apos;est moi — je suis l&apos;étudiant
+              C&apos;est moi (mon compte)
             </button>
           ) : null}
           <Field label="Nom" required value={payer.nom} onChange={(e) => setPayer((p) => ({ ...p, nom: e.target.value }))} />
@@ -324,18 +384,28 @@ export default function TuitionPage() {
           <p className="mb-[7px] text-[12.5px] font-bold text-gray-700">Type de frais<span className="ml-0.5 text-red">*</span></p>
           <ChipGroup>
             {school.fees.map((f) => (
-              <Chip key={f} selected={feeType === f} onClick={() => setFeeType(f)}>{f}</Chip>
+              <Chip key={f} selected={feeType === f} onClick={() => selectFee(f)}>
+                {f} · {feeAmount(f)} {currencySymbol(school.currency ?? "USD")}
+              </Chip>
             ))}
           </ChipGroup>
           <p className="mb-1.5 mt-3.5 text-[12.5px] font-bold text-gray-700">Montant<span className="ml-0.5 text-red">*</span></p>
           <ChipGroup className="mb-1.5">
-            {school.presets.map((a) => (
-              <Chip key={a} selected={amount === a} onClick={() => setAmount(a)}>{a} $</Chip>
-            ))}
+            <Chip selected={amount === feeMax} onClick={() => setAmount(feeMax)}>Montant plein · {feeMax} {currencySymbol(school.currency ?? "USD")}</Chip>
+            <Chip selected={amount === Math.round(feeMax / 2)} onClick={() => setAmount(Math.round(feeMax / 2))}>Moitié · {Math.round(feeMax / 2)} {currencySymbol(school.currency ?? "USD")}</Chip>
           </ChipGroup>
-          <AmountInput currency={currencySymbol(school?.currency ?? "USD")} value={amount || ""} onChange={(e) => setAmount(Number(e.target.value) || 0)} />
+          <AmountInput currency={currencySymbol(school?.currency ?? "USD")} value={amount || ""} onChange={(e) => onAmount(Number(e.target.value) || 0)} />
+          {overMax ? (
+            <p className="mt-1.5 text-[11.5px] font-semibold text-red">
+              Maximum {feeMax} {currencySymbol(school.currency ?? "USD")} pour « {feeType} ». Tu peux régler ce montant ou moins (paiement partiel), jamais plus.
+            </p>
+          ) : (
+            <p className="mt-1.5 text-[11.5px] text-gray-500">
+              Frais <b className="text-gray-700">{feeType}</b> : {feeMax} {currencySymbol(school.currency ?? "USD")}. Tu peux régler ce montant ou moins (paiement partiel), jamais plus.
+            </p>
+          )}
           <Field label="Référence (optionnel)" placeholder="Ex : REF-2026-0456" value={reference} onChange={(e) => setReference(e.target.value)} />
-          <Button className="mt-6" onClick={() => goto("method")} disabled={!amount}>Continuer</Button>
+          <Button className="mt-6" onClick={() => goto("method")} disabled={!amount || amount > feeMax}>Continuer</Button>
         </div>
       ) : null}
 

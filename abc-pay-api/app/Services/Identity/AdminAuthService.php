@@ -58,6 +58,8 @@ class AdminAuthService
                 'name' => $admin->name,
                 'email' => $admin->email,
                 'role' => $admin->role,
+                'permissions' => $admin->permissions(),
+                'must_change_password' => (bool) $admin->must_change_password,
             ],
             'token_type' => 'Bearer',
             'access_token' => $this->jwt->issueAdminAccess($admin),

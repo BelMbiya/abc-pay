@@ -56,11 +56,14 @@ async function request<T>(
 ): Promise<T> {
   if (!BASE_URL) throw new ApiError(0, "config", "NEXT_PUBLIC_API_URL manquant.");
 
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   const headers: Record<string, string> = {
     Accept: "application/json",
     "X-Requested-With": "XMLHttpRequest",
   };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // Multipart (upload de fichier) : on laisse le navigateur poser le Content-Type
+  // avec sa boundary. Sinon, corps JSON.
+  if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   const bearer = opts.token ?? authToken;
   if (bearer) headers["Authorization"] = `Bearer ${bearer}`;
   // Idempotency-Key stable sur le retry (pas de double traitement).
@@ -77,7 +80,7 @@ async function request<T>(
     res = await fetch(`${BASE_URL}${path}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
       credentials: "omit", // token-based : pas de cookies ambiants
       cache: "no-store",
       signal: controller.signal,

@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, RefreshCw, QrCode, ChevronDown } from "lucide-react";
-import { StatusPill, Pagination, usePagination } from "@/components/ui";
+import { Search, RefreshCw, QrCode, ChevronDown, Undo2, Check, X } from "lucide-react";
+import { StatusPill, Pagination, usePagination, useToast, useConfirm } from "@/components/ui";
 import { PageHeader } from "@/components/backoffice/StatCard";
+import { RefundRequestSheet } from "@/components/RefundRequestSheet";
 import { money } from "@/lib/money";
 import { channelLabel, CHANNEL_LABELS } from "@/lib/transactions-api";
-import { fetchStaffTransactions, type TxRow, type TxSummary } from "@/lib/tx-views-api";
+import { fetchStaffTransactions, requestStaffRefund, fetchStaffRefunds, staffDecideRefund, type TxRow, type TxSummary, type AdminRefund } from "@/lib/tx-views-api";
+import { ApiError } from "@/lib/api";
 import { getStaffUser } from "@/lib/staff-auth";
 import { EstablishmentQrCard } from "@/components/qr/EstablishmentQrCard";
 import { PERIODS, inPeriod, DEFAULT_PERIOD, type Period } from "@/lib/period";
@@ -32,12 +34,30 @@ const selectCls = "shrink-0 rounded-[12px] border-[1.5px] border-gray-100 bg-gra
 export default function PaiementsPage() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [rows, setRows] = useState<TxRow[]>([]);
+  const [refundTx, setRefundTx] = useState<TxRow | null>(null);
+  // Demandes de remboursement en attente de la décision de l'établissement, par transaction.
+  const [pendingRefunds, setPendingRefunds] = useState<Record<string, AdminRefund>>({});
+  const [busyRefund, setBusyRefund] = useState<string | null>(null);
+  const { showToast } = useToast();
+  const confirm = useConfirm();
   const [summary, setSummary] = useState<TxSummary | null>(null);
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState("all");
   const [status, setStatus] = useState("all");
   const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD);
   const [showQr, setShowQr] = useState(false);
+
+  const loadRefunds = useCallback(async () => {
+    try {
+      const refunds = await fetchStaffRefunds();
+      const map: Record<string, AdminRefund> = {};
+      for (const r of refunds) {
+        // En attente de NOTRE décision (établissement) : demande + pas encore décidée par nous.
+        if (r.status === "demande" && r.needs_establishment && r.establishment_decision === null) map[r.transaction_id] = r;
+      }
+      setPendingRefunds(map);
+    } catch { /* silencieux */ }
+  }, []);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -46,10 +66,27 @@ export default function PaiementsPage() {
       setRows(data.transactions);
       setSummary(data.summary);
       setState("ready");
+      void loadRefunds();
     } catch {
       setState("error");
     }
-  }, []);
+  }, [loadRefunds]);
+
+  const decideRefund = async (r: AdminRefund, decision: "approuve" | "refuse") => {
+    const ok = decision === "approuve"
+      ? await confirm({ title: "Confirmer ce remboursement ?", message: `${money(r.amount, r.currency)} — « ${r.reason} ». Il sera transmis à l'administrateur pour exécution.`, confirmLabel: "Confirmer" })
+      : await confirm({ title: "Annuler ce remboursement ?", message: `${money(r.amount, r.currency)} — « ${r.reason} ». La demande sera refusée.`, confirmLabel: "Annuler la demande", danger: true });
+    if (!ok) return;
+    setBusyRefund(r.id);
+    try {
+      await staffDecideRefund(r.id, decision);
+      showToast(decision === "approuve" ? "Remboursement confirmé — transmis à l'administrateur" : "Demande de remboursement annulée");
+      await loadRefunds();
+    } catch (e) {
+      const field = e instanceof ApiError ? Object.values(e.fields ?? {})[0]?.[0] : undefined;
+      showToast(field ?? (e instanceof ApiError ? e.message : "Action impossible"));
+    } finally { setBusyRefund(null); }
+  };
 
   useEffect(() => {
     let active = true;
@@ -146,21 +183,35 @@ export default function PaiementsPage() {
               <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-gray-500">
                 <th className="pb-3 pr-3">Date</th>
                 <th className="pb-3 pr-3">Élève</th>
+                <th className="pb-3 pr-3">Acteur</th>
                 <th className="pb-3 pr-3">Moyen</th>
                 <th className="pb-3 pr-3 text-right">Montant</th>
-                <th className="pb-3">Statut</th>
+                <th className="pb-3 pr-3">Statut</th>
+                <th className="pb-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
               {state === "loading"
-                ? [0, 1, 2, 3].map((i) => <tr key={i} className="border-t border-white"><td colSpan={5} className="py-3"><div className="h-4 animate-pulse rounded bg-white" /></td></tr>)
+                ? [0, 1, 2, 3].map((i) => <tr key={i} className="border-t border-white"><td colSpan={7} className="py-3"><div className="h-4 animate-pulse rounded bg-white" /></td></tr>)
                 : pageItems.map((t) => (
                     <tr key={t.id} className="border-t border-white text-[13px]">
                       <td className="py-3 pr-3 text-gray-500">{fdate(t.created_at)}</td>
                       <td className="py-3 pr-3"><div className="font-bold text-ink">{t.student_name ?? "—"}</div><div className="text-[11px] text-gray-500">{t.student_matricule ?? ""} · {t.fee_type ?? ""}</div></td>
+                      <td className="py-3 pr-3"><div className="text-ink">{t.actor ?? "—"}</div>{t.actor_phone ? <div className="text-[11px] text-gray-500">{t.actor_phone}</div> : null}</td>
                       <td className="py-3 pr-3 text-gray-500">{channelLabel(t.channel)}</td>
                       <td className="py-3 pr-3 text-right font-bold text-ink">{money(t.amount, t.currency)}</td>
-                      <td className="py-3"><StatusPill tone={STATUS[t.status] ?? "soon"}>{STATUS_LABEL[t.status] ?? t.status}</StatusPill></td>
+                      <td className="py-3 pr-3"><StatusPill tone={STATUS[t.status] ?? "soon"}>{STATUS_LABEL[t.status] ?? t.status}</StatusPill></td>
+                      <td className="py-3 text-right">
+                        {pendingRefunds[t.id] ? (
+                          <div className="inline-flex items-center gap-1.5">
+                            <span className="mr-1 hidden text-[10.5px] font-bold text-gold-600 sm:inline">Remb. demandé</span>
+                            <button type="button" disabled={busyRefund === pendingRefunds[t.id].id} onClick={() => decideRefund(pendingRefunds[t.id], "approuve")} aria-label="Confirmer" title="Confirmer le remboursement" className="flex size-8 items-center justify-center rounded-lg bg-green text-white hover:opacity-90 disabled:opacity-50"><Check className="size-4" strokeWidth={2.4} /></button>
+                            <button type="button" disabled={busyRefund === pendingRefunds[t.id].id} onClick={() => decideRefund(pendingRefunds[t.id], "refuse")} aria-label="Annuler" title="Annuler la demande" className="flex size-8 items-center justify-center rounded-lg bg-red text-white hover:opacity-90 disabled:opacity-50"><X className="size-4" strokeWidth={2.4} /></button>
+                          </div>
+                        ) : t.status === "confirmee" ? (
+                          <button type="button" onClick={() => setRefundTx(t)} className="inline-flex items-center gap-1 text-[11.5px] font-bold text-blue-600 hover:underline"><Undo2 className="size-3.5" strokeWidth={2.4} />Rembourser</button>
+                        ) : <span className="text-[11px] text-gray-300">—</span>}
+                      </td>
                     </tr>
                   ))}
             </tbody>
@@ -169,6 +220,18 @@ export default function PaiementsPage() {
         <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPage={setPage} />
         </>
       )}
+
+      {refundTx ? (
+        <RefundRequestSheet
+          open={!!refundTx}
+          onClose={() => setRefundTx(null)}
+          title={`${refundTx.student_name ?? "Paiement"} · ${refundTx.fee_type ?? ""}`}
+          amount={refundTx.amount}
+          currency={refundTx.currency}
+          onSubmit={(reason) => requestStaffRefund(refundTx.id, reason)}
+          onDone={load}
+        />
+      ) : null}
     </div>
   );
 }

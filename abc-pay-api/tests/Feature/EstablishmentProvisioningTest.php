@@ -96,6 +96,56 @@ class EstablishmentProvisioningTest extends TestCase
         $this->assertDatabaseHas('establishments', ['id' => $est->id, 'name' => 'Ets Info Renommé', 'commission_rate' => 0.03, 'is_active' => false]);
     }
 
+    public function test_admin_supprime_un_etablissement_sans_transactions(): void
+    {
+        $this->postJson('/api/v1/admin/establishments', [
+            'name' => 'Ets Supprimable', 'type' => 'Université',
+            'login_email' => 'suppr@x.cd', 'login_password' => 'password',
+        ], $this->adminHeaders())->assertCreated();
+        $est = Establishment::first();
+
+        $this->deleteJson("/api/v1/admin/establishments/{$est->id}", [], $this->adminHeaders())
+            ->assertOk()
+            ->assertJsonPath('data.deleted', true);
+
+        $this->assertDatabaseMissing('establishments', ['id' => $est->id]);
+        $this->assertDatabaseMissing('users', ['email' => 'suppr@x.cd']); // compte de connexion supprimé
+        $this->assertDatabaseMissing('establishment_staff', ['establishment_id' => $est->id]);
+    }
+
+    public function test_suppression_refusee_si_historique_de_transactions(): void
+    {
+        $this->postJson('/api/v1/admin/establishments', [
+            'name' => 'Ets Actif', 'type' => 'Université',
+            'login_email' => 'actif@x.cd', 'login_password' => 'password',
+        ], $this->adminHeaders())->assertCreated();
+        $est = Establishment::first();
+
+        \App\Models\Transaction::create([
+            'type' => 'tuition', 'establishment_id' => $est->id, 'student_name' => 'Élève X',
+            'fee_type' => 'Minerval', 'channel' => 'mpesa', 'amount' => 250, 'total' => 250,
+            'currency' => 'USD', 'status' => 'confirmee',
+        ]);
+
+        $this->deleteJson("/api/v1/admin/establishments/{$est->id}", [], $this->adminHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'cannot_delete');
+
+        $this->assertDatabaseHas('establishments', ['id' => $est->id]); // toujours là
+    }
+
+    public function test_suppression_exige_une_auth_admin(): void
+    {
+        $this->postJson('/api/v1/admin/establishments', [
+            'name' => 'Ets Protégé', 'type' => 'Université',
+            'login_email' => 'prot@x.cd', 'login_password' => 'password',
+        ], $this->adminHeaders())->assertCreated();
+        $est = Establishment::first();
+
+        $this->deleteJson("/api/v1/admin/establishments/{$est->id}")->assertStatus(401);
+        $this->assertDatabaseHas('establishments', ['id' => $est->id]);
+    }
+
     public function test_liste_expose_email_de_connexion(): void
     {
         $this->postJson('/api/v1/admin/establishments', [

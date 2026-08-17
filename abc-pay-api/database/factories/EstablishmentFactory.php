@@ -22,7 +22,7 @@ class EstablishmentFactory extends Factory
             'city' => 'Kinshasa',
             'commission_rate' => 0.02,
             'fees' => ['Minerval', 'Frais académiques'],
-            'presets' => [150, 250],
+            'presets' => [250, 350], // barème apparié : Minerval=250, Frais académiques=350
             'is_active' => true,
         ];
     }

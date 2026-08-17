@@ -46,5 +46,16 @@ class AppServiceProvider extends ServiceProvider
         // Webhooks opérateurs : débit élevé mais borné (par IP source).
         RateLimiter::for('webhook', fn (Request $request) => Limit::perMinute(300)
             ->by($request->ip()));
+
+        // Vérification de reçu : borne l'énumération de jetons/codes (par IP).
+        RateLimiter::for('verify', fn (Request $request) => Limit::perMinute(20)
+            ->by($request->ip()));
+
+        // Demandes de démo / partenariat (landing) : anti-spam, par IP.
+        // 20/min : borne le spam sans pénaliser les IP partagées (NAT opérateur,
+        // cybercafés) fréquentes en RDC, où plusieurs visiteurs légitimes sortent
+        // sur une même adresse.
+        RateLimiter::for('lead', fn (Request $request) => Limit::perMinute(20)
+            ->by($request->ip()));
     }
 }

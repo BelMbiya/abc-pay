@@ -1,25 +1,10 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
-
-/** En-tête des pages d'information / légales (retour + titre). */
+/** En-tête des pages d'information / légales (titre seul — la navigation est portée
+ *  par le layout public « Retour au site »). */
 export function InfoHeader({ title, subtitle }: { title: string; subtitle?: string }) {
-  const router = useRouter();
   return (
-    <div className="mb-5 flex items-center gap-3">
-      <button
-        type="button"
-        onClick={() => router.push("/")}
-        aria-label="Retour à l'accueil"
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-      >
-        <ArrowLeft className="size-[18px]" strokeWidth={2.2} />
-      </button>
-      <div className="min-w-0">
-        <h1 className="font-display text-[18px] font-extrabold tracking-tight text-ink">{title}</h1>
-        {subtitle ? <p className="text-[12px] text-gray-500">{subtitle}</p> : null}
-      </div>
+    <div className="mb-5">
+      <h1 className="font-display text-[18px] font-extrabold tracking-tight text-ink">{title}</h1>
+      {subtitle ? <p className="mt-0.5 text-[12px] text-gray-500">{subtitle}</p> : null}
     </div>
   );
 }

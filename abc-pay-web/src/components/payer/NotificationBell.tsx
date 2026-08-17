@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Bell, Check, XCircle, Info, X } from "lucide-react";
+import { Bell, Check, XCircle, Info, AlertTriangle, ShieldAlert, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { fetchNotifications, markNotificationsRead, NOTIFY_EVENT, type AppNotification } from "@/lib/notifications-api";
 
@@ -10,6 +10,9 @@ const ICON: Record<string, { icon: typeof Check; cls: string }> = {
   success: { icon: Check, cls: "bg-success-bg text-green" },
   error: { icon: XCircle, cls: "bg-[#FDE7E8] text-red" },
   info: { icon: Info, cls: "bg-blue-100 text-blue-600" },
+  // Niveaux du fil admin (fraude / support / système)
+  warning: { icon: AlertTriangle, cls: "bg-fee-bg text-gold-600" },
+  critical: { icon: ShieldAlert, cls: "bg-[#FDE7E8] text-red" },
 };
 
 function timeAgo(iso: string | null): string {
@@ -25,24 +28,38 @@ function timeAgo(iso: string | null): string {
  * Cœur réutilisable du centre de notifications (cloche + drawer coulissant à droite).
  * Découplé de `useAuth` : on lui passe `token`/`ready` selon la session (payeur, staff, admin).
  */
-export function NotificationCenter({ token, ready, className = "" }: { token: string | null; ready: boolean; className?: string }) {
+export function NotificationCenter({
+  token,
+  ready,
+  className = "",
+  basePath = "/api/v1",
+}: {
+  token: string | null;
+  ready: boolean;
+  className?: string;
+  basePath?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [items, setItems] = useState<AppNotification[]>([]);
   const [unread, setUnread] = useState(0);
+  const readTimer = useRef<number | null>(null);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- montage client (portal)
   useEffect(() => setMounted(true), []);
 
+  // Nettoie le minuteur « marquer lu » au démontage.
+  useEffect(() => () => { if (readTimer.current) window.clearTimeout(readTimer.current); }, []);
+
   const refresh = useCallback(async () => {
     try {
-      const d = await fetchNotifications(token ?? undefined);
+      const d = await fetchNotifications(token ?? undefined, basePath);
       setItems(d.notifications);
       setUnread(d.unread);
     } catch {
       /* silencieux */
     }
-  }, [token]);
+  }, [token, basePath]);
 
   // Temps réel : ping après action + focus + retour d'onglet + polling léger (8 s).
   useEffect(() => {
@@ -72,17 +89,17 @@ export function NotificationCenter({ token, ready, className = "" }: { token: st
     };
   }, [open]);
 
-  const openPanel = async () => {
+  const openPanel = () => {
     setOpen(true);
-    if (unread > 0) {
-      try {
-        await markNotificationsRead(token ?? undefined);
-        setUnread(0);
-        setItems((prev) => prev.map((n) => ({ ...n, read: true })));
-      } catch {
-        /* ignore */
-      }
-    }
+    if (unread === 0) return;
+    setUnread(0); // le badge disparaît dès l'ouverture
+    // Laisse le temps de LIRE : on ne marque « lu » que 10 s après l'ouverture (le gras
+    // et le point restent jusque-là). On annule un éventuel minuteur précédent.
+    if (readTimer.current) window.clearTimeout(readTimer.current);
+    readTimer.current = window.setTimeout(() => {
+      markNotificationsRead(token ?? undefined, basePath).catch(() => {});
+      setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+    }, 10_000);
   };
 
   if (!token) return null;
@@ -141,14 +158,17 @@ export function NotificationCenter({ token, ready, className = "" }: { token: st
               const m = ICON[n.level] ?? ICON.info;
               const Icon = m.icon;
               return (
-                <div key={n.id} className="flex items-start gap-3 border-b border-gray-100 py-3.5 last:border-b-0">
+                <div key={n.id} className={`-mx-5 flex items-start gap-3 border-b border-gray-100 px-5 py-3.5 transition-colors last:border-b-0 ${n.read ? "" : "bg-blue-100/40"}`}>
                   <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${m.cls}`}><Icon className="size-[17px]" strokeWidth={2.4} /></span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-[13px] font-bold text-ink">{n.title}</p>
-                      <span className="shrink-0 text-[10.5px] text-gray-500">{timeAgo(n.created_at)}</span>
+                      <p className={`truncate text-[13px] text-ink ${n.read ? "font-medium" : "font-bold"}`}>{n.title}</p>
+                      <span className="flex shrink-0 items-center gap-1.5 text-[10.5px] text-gray-500">
+                        {n.read ? null : <span className="size-1.5 rounded-full bg-blue-600" aria-label="Non lue" />}
+                        {timeAgo(n.created_at)}
+                      </span>
                     </div>
-                    {n.body ? <p className="mt-0.5 text-[11.5px] leading-relaxed text-gray-500">{n.body}</p> : null}
+                    {n.body ? <p className={`mt-0.5 text-[11.5px] leading-relaxed ${n.read ? "text-gray-500" : "text-gray-700"}`}>{n.body}</p> : null}
                   </div>
                 </div>
               );

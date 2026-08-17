@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LifeBuoy, Plus, ArrowLeft, ShieldAlert, CheckCircle2 } from "lucide-react";
-import { BottomSheet, Button, Field, Chip, ChipGroup, StatusPill, useToast } from "@/components/ui";
+import { BottomSheet, Button, Field, Chip, ChipGroup, StatusPill, useToast, useConfirm } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import {
   fetchMyTickets, openTicket, TICKET_CATEGORIES, FREEZE_CATEGORIES, CATEGORY_LABEL, TICKET_STATUS,
@@ -25,6 +25,7 @@ const DEFAULT_API: SupportApi = { fetch: fetchMyTickets, open: openTicket };
 
 export function SupportSheet({ open, onClose, api = DEFAULT_API }: { open: boolean; onClose: () => void; api?: SupportApi }) {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [view, setView] = useState<"list" | "new">("list");
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +50,16 @@ export function SupportSheet({ open, onClose, api = DEFAULT_API }: { open: boole
   }, [open]);
 
   const submit = async () => {
+    // Catégorie de sécurité → GÈLE le compte immédiatement : confirmation obligatoire.
+    if (FREEZE_CATEGORIES.includes(f.category)) {
+      const ok = await confirm({
+        title: "Bloquer ton compte maintenant ?",
+        message: "Ton compte sera gelé immédiatement et toutes tes sessions déconnectées. Le déblocage se fera après vérification par le support.",
+        confirmLabel: "Bloquer mon compte",
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setError(null);
     setSaving(true);
     try {

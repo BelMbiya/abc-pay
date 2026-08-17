@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Plus, Settings2, RefreshCw, Ban, CheckCircle2 } from "lucide-react";
-import { Button, StatusPill, useToast, Pagination, usePagination } from "@/components/ui";
+import { Search, Plus, Settings2, RefreshCw, Ban, CheckCircle2, Banknote } from "lucide-react";
+import { Button, StatusPill, useToast, useConfirm, Pagination, usePagination } from "@/components/ui";
 import { PageHeader } from "@/components/backoffice/StatCard";
 import { OnboardEstablishmentSheet } from "@/components/admin/OnboardEstablishmentSheet";
 import { ConfigureEstablishmentSheet } from "@/components/admin/ConfigureEstablishmentSheet";
-import { fetchAdminEstablishments, updateEstablishment, type AdminEstablishment } from "@/lib/admin-api";
+import { fetchAdminEstablishments, updateEstablishment, fetchEstablishmentSettlements, executeSettlement, type AdminEstablishment } from "@/lib/admin-api";
 
 export default function AdminEstablishmentsPage() {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [q, setQ] = useState("");
   const [onboardOpen, setOnboardOpen] = useState(false);
   const [configTarget, setConfigTarget] = useState<AdminEstablishment | null>(null);
@@ -38,13 +39,49 @@ export default function AdminEstablishmentsPage() {
   }, []);
 
   const toggleStatus = async (e: AdminEstablishment) => {
+    const suspending = e.is_active;
+    const ok = await confirm({
+      title: suspending ? `Suspendre ${e.name} ?` : `Réactiver ${e.name} ?`,
+      message: suspending
+        ? "L'établissement ne pourra plus recevoir de paiements tant qu'il est suspendu."
+        : "L'établissement pourra de nouveau recevoir des paiements.",
+      confirmLabel: suspending ? "Suspendre" : "Réactiver",
+      danger: suspending,
+    });
+    if (!ok) return;
+
     setBusyId(e.id);
     try {
       await updateEstablishment(e.id, { is_active: !e.is_active });
-      showToast(e.is_active ? `${e.name} suspendu` : `${e.name} réactivé`);
+      showToast(suspending ? `${e.name} suspendu` : `${e.name} réactivé`);
       await load();
     } catch {
       showToast("Action impossible");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const reverse = async (e: AdminEstablishment) => {
+    setBusyId(e.id);
+    try {
+      const { pending, establishment } = await fetchEstablishmentSettlements(e.id);
+      const sym = establishment.currency === "CDF" ? "FC" : "$";
+      if (!pending || pending.net <= 0) {
+        showToast(`Rien à reverser pour ${e.name}`);
+        return;
+      }
+      const ok = await confirm({
+        title: `Reverser ${e.name} ?`,
+        message: `Un reversement de ${pending.net.toLocaleString("fr-FR")} ${sym} (${pending.count} encaissement${pending.count > 1 ? "s" : ""}) va être exécuté et marqué comme payé.`,
+        confirmLabel: "Reverser",
+      });
+      if (!ok) return;
+      const res = await executeSettlement(e.id);
+      showToast(`Reversement de ${res.net.toLocaleString("fr-FR")} ${sym} effectué`);
+      await load();
+    } catch {
+      showToast("Reversement impossible");
     } finally {
       setBusyId(null);
     }
@@ -134,7 +171,7 @@ export default function AdminEstablishmentsPage() {
                         <span className="font-semibold text-ink">{e.login_email ?? "—"}</span>
                       </td>
                       <td className="py-3 pr-3">
-                        <StatusPill tone={e.is_active ? "live" : "soon"}>{e.is_active ? "Actif" : "Suspendu"}</StatusPill>
+                        <StatusPill tone={e.status === "active" ? "live" : e.status === "pending" ? "soon" : "soon"}>{e.status === "pending" ? "Vérification en cours" : e.is_active ? "Actif" : "Suspendu"}</StatusPill>
                       </td>
                       <td className="py-3 pr-3 text-right font-bold text-ink">{(e.commission_rate * 100).toFixed(1)} %</td>
                       <td className="py-3 text-right">
@@ -146,6 +183,16 @@ export default function AdminEstablishmentsPage() {
                             className="flex size-8 items-center justify-center rounded-lg bg-white text-gray-700 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                           >
                             <Settings2 className="size-4" strokeWidth={2} />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Reverser"
+                            title="Reverser les encaissements en attente"
+                            disabled={busyId === e.id}
+                            onClick={() => reverse(e)}
+                            className="flex size-8 items-center justify-center rounded-lg bg-white text-blue-600 hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                          >
+                            <Banknote className="size-4" strokeWidth={2} />
                           </button>
                           <button
                             type="button"

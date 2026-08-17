@@ -182,3 +182,12 @@
   .animate-dash, .bg-grad-hero { animation: none !important; }
   .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
 }
+
+/* Impression du relevé de compte (#10) : on masque tout sauf le relevé, pour
+   produire un PDF propre via « Imprimer / Enregistrer en PDF » (window.print). */
+@media print {
+  body * { visibility: hidden !important; }
+  #abc-statement-print, #abc-statement-print * { visibility: visible !important; }
+  #abc-statement-print { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
+  .no-print { display: none !important; }
+}

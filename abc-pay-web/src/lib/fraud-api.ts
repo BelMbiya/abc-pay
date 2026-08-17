@@ -14,6 +14,14 @@ export interface FraudFlag {
   status: string; // open | dismissed | actioned
   resolved_by: string | null;
   created_at: string | null;
+  user_id: number | null;
+  user: {
+    id: number;
+    name: string | null;
+    phone: string | null;
+    is_blocked: boolean;
+    kyc_status: string;
+  } | null;
   transaction: {
     id: string;
     type: string;

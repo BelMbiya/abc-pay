@@ -7,6 +7,7 @@ use App\Http\Requests\CreateUserRequest;
 use App\Models\User;
 use App\Services\Identity\Exceptions\UserActionException;
 use App\Services\Identity\UserManagementService;
+use App\Services\Payment\TransactionHistoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -32,6 +33,12 @@ class AdminUserController extends Controller
     public function show(User $user): JsonResponse
     {
         return response()->json(['data' => $this->users->show($user)]);
+    }
+
+    /** Trace COMPLÈTE des transactions d'un compte (suivi/audit). */
+    public function transactions(User $user, TransactionHistoryService $history): JsonResponse
+    {
+        return response()->json(['data' => $history->forUser($user, 500)]);
     }
 
     public function block(Request $request, User $user): JsonResponse

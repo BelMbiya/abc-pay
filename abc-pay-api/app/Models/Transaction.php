@@ -17,7 +17,8 @@ class Transaction extends Model
         'payer_name', 'payer_phone', 'payer_relation',
         'counterparty_name', 'counterparty_phone', 'label',
         'fee_type', 'channel', 'amount', 'service_fee', 'commission', 'total',
-        'currency', 'status', 'reference', 'idempotency_key', 'confirmed_at',
+        'currency', 'status', 'reference', 'idempotency_key', 'confirmed_at', 'settlement_id',
+        'gateway', 'payment_token', 'notify_token', 'gateway_ref',
     ];
 
     protected function casts(): array
@@ -44,5 +45,10 @@ class Transaction extends Model
     public function receipt(): HasOne
     {
         return $this->hasOne(Receipt::class);
+    }
+
+    public function settlement(): BelongsTo
+    {
+        return $this->belongsTo(Settlement::class);
     }
 }

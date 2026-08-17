@@ -35,8 +35,12 @@ export interface TuitionPaymentPayload {
 
 export interface TuitionPaymentResult {
   receiptNumber: string | null;
-  status: "confirmee" | "echouee";
+  receiptToken: string | null; // jeton d'authenticité (QR + code de vérification)
+  status: "confirmee" | "echouee" | "pending";
   reason: string | null; // raison exacte en cas d'échec
+  // Passerelle CinetPay : URL de la page de paiement hébergée (à ouvrir pour finaliser).
+  // La confirmation réelle arrive ensuite via webhook (statut « pending » en attendant).
+  redirectUrl: string | null;
 }
 
 /**
@@ -44,22 +48,45 @@ export interface TuitionPaymentResult {
  * (validation, plafond, réseau, 500) est remonté avec sa raison — jamais présenté
  * comme un succès. (Le repli mock ne concerne QUE la lecture des établissements.)
  */
+export interface PaymentStatus {
+  status: "pending" | "confirmee" | "failed" | "echouee";
+  receiptNumber: string | null;
+}
+
+/** Statut d'un paiement (page de retour après redirection CinetPay). */
+export async function fetchPaymentStatus(transactionId: string): Promise<PaymentStatus> {
+  const data = await api.get<{ status?: string; receipt?: { number?: string } }>(`${V1}/payments/${transactionId}/status`);
+  const s = data?.status;
+  return {
+    status: s === "confirmee" ? "confirmee" : s === "failed" || s === "echouee" ? "failed" : "pending",
+    receiptNumber: data?.receipt?.number ?? null,
+  };
+}
+
 export async function createTuitionPayment(payload: TuitionPaymentPayload): Promise<TuitionPaymentResult> {
   try {
-    const data = await api.post<{ transaction?: { status?: string; failure_reason?: string | null }; receipt?: { number?: string } }>(
+    const data = await api.post<{ transaction?: { status?: string; failure_reason?: string | null }; receipt?: { number?: string; qr_token?: string }; payment_url?: string }>(
       `${V1}/payments`,
       payload,
       { idempotent: true },
     );
     pingNotifications();
-    const status = data?.transaction?.status === "echouee" ? "echouee" : "confirmee";
-    return { receiptNumber: data?.receipt?.number ?? null, status, reason: data?.transaction?.failure_reason ?? null };
+    const raw = data?.transaction?.status;
+    const status: TuitionPaymentResult["status"] =
+      raw === "echouee" ? "echouee" : raw === "pending" ? "pending" : "confirmee";
+    return {
+      receiptNumber: data?.receipt?.number ?? null,
+      receiptToken: data?.receipt?.qr_token ?? null,
+      status,
+      reason: data?.transaction?.failure_reason ?? null,
+      redirectUrl: data?.payment_url ?? null,
+    };
   } catch (e) {
     const reason =
       e instanceof ApiError
         ? (e.fields ? Object.values(e.fields).flat()[0] ?? e.message : e.message)
         : "Connexion impossible. Vérifie ta connexion et réessaie.";
-    return { receiptNumber: null, status: "echouee", reason };
+    return { receiptNumber: null, receiptToken: null, status: "echouee", reason, redirectUrl: null };
   }
 }
 

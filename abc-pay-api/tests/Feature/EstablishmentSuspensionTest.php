@@ -31,7 +31,12 @@ class EstablishmentSuspensionTest extends TestCase
             'login_email' => 'dir@test.cd', 'login_password' => 'secret123',
         ]);
 
-        return [Establishment::find($created['id']), User::where('email', 'dir@test.cd')->firstOrFail()];
+        $user = User::where('email', 'dir@test.cd')->firstOrFail();
+        // Comptes provisionnés = KYC requis + mot de passe à changer ; ces tests portent sur la
+        // suspension → on considère le compte déjà initialisé (identité vérifiée, mot de passe changé).
+        $user->forceFill(['kyc_status' => 'approved', 'must_change_password' => false])->save();
+
+        return [Establishment::find($created['id']), $user];
     }
 
     public function test_connexion_refusee_si_etablissement_suspendu(): void

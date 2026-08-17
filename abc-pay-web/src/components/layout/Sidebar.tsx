@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Home, LayoutGrid, ScanLine, Clock, User, HelpCircle } from "lucide-react";
 import { IconRail, type RailItem } from "./IconRail";
+import { useAuth } from "@/lib/auth-context";
+import { initials } from "@/lib/profile-api";
 
 const NAV: RailItem[] = [
   { label: "Accueil", icon: Home, href: "/" },
@@ -14,6 +16,8 @@ const NAV: RailItem[] = [
 
 /** Rail de navigation de l'espace payeur (desktop). */
 export function Sidebar({ className }: { className?: string }) {
+  const { user } = useAuth();
+  const avatar = user ? initials(user.name ?? null, user.phone ?? "") : "?";
   return (
     <IconRail
       items={NAV}
@@ -34,7 +38,7 @@ export function Sidebar({ className }: { className?: string }) {
             aria-label="Profil"
             className="flex size-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--color-blue-500),var(--color-navy))] font-display text-[13px] font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            GM
+            {avatar}
           </Link>
         </>
       }

@@ -13,8 +13,12 @@ export interface AdminEstablishment {
   currency: string;
   billing_mode: string;
   is_active: boolean;
+  status?: "active" | "pending" | "suspended";
+  verification_pending?: boolean;
   login_email?: string | null;
   login_name?: string | null;
+  payout_phone?: string | null;   // numéro mobile money de réception des reversements
+  payout_method?: string | null;  // opérateur (ex. code CinetPay)
 }
 
 const auth = () => ({ token: getAdminToken() ?? undefined });
@@ -61,9 +65,43 @@ export interface UpdateEstablishmentInput {
   currency?: string;
   billing_mode?: "payment_only" | "fee_management";
   is_active?: boolean;
+  payout_phone?: string | null;
+  payout_method?: string | null;
 }
 
 /** Modifie les informations d'un établissement (nom, type, ville, commission, statut). */
 export async function updateEstablishment(id: string, input: UpdateEstablishmentInput): Promise<AdminEstablishment> {
   return api.patch<AdminEstablishment>(`/api/v1/admin/establishments/${id}`, input, auth());
+}
+
+/** Suppression définitive (refusée côté serveur si historique de transactions → suspendre). */
+export async function deleteEstablishment(id: string): Promise<{ deleted: boolean }> {
+  return api.delete<{ deleted: boolean }>(`/api/v1/admin/establishments/${id}`, auth());
+}
+
+/* ------------------------------ Reversements ------------------------------ */
+
+export interface SettlementPending {
+  gross: number;
+  commission: number;
+  net: number;
+  count: number;
+  period_start: string | null;
+  period_end: string | null;
+}
+
+export interface EstablishmentSettlements {
+  establishment: { id: string; name: string; currency: string };
+  pending: SettlementPending;
+  history: Array<{ period: string; gross: number; commission: number; net: number; count: number; status: string; reference: string | null; paid_at: string | null }>;
+}
+
+/** En attente + historique des reversements d'un établissement (admin). */
+export async function fetchEstablishmentSettlements(id: string): Promise<EstablishmentSettlements> {
+  return api.get<EstablishmentSettlements>(`/api/v1/admin/establishments/${id}/settlements`, auth());
+}
+
+/** Exécute le reversement des encaissements en attente (acte comptable admin). */
+export async function executeSettlement(id: string, reference?: string): Promise<{ id: string; net: number; transactions_count: number; status: string }> {
+  return api.post(`/api/v1/admin/establishments/${id}/settlements`, reference ? { reference } : {}, auth());
 }

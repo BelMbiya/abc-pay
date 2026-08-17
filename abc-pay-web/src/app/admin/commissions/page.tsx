@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, RefreshCw } from "lucide-react";
-import { StatusPill, Pagination, usePagination } from "@/components/ui";
+import { Search, RefreshCw, FileText, FileSpreadsheet, Download } from "lucide-react";
+import { Button, StatusPill, Pagination, usePagination } from "@/components/ui";
 import { PageHeader } from "@/components/backoffice/StatCard";
 import { money, toBase } from "@/lib/money";
 import { channelLabel, CHANNEL_LABELS, txParty } from "@/lib/transactions-api";
 import { fetchAdminTransactions, type TxRow, type TxSummary } from "@/lib/tx-views-api";
 import { PERIODS, inPeriod, DEFAULT_PERIOD, type Period } from "@/lib/period";
+import { exportPdf, exportExcel, type ExportOptions } from "@/lib/export";
+import { downloadCsv } from "@/lib/csv";
 
 const STATUS: Record<string, "live" | "gold" | "soon"> = { confirmee: "live", en_attente: "gold", echouee: "soon" };
 const STATUS_LABEL: Record<string, string> = { confirmee: "Confirmé", en_attente: "En attente", echouee: "Échoué" };
@@ -87,9 +89,67 @@ export default function CommissionsPage() {
 
   const { page, setPage, pageItems, total, totalPages, pageSize } = usePagination(filtered);
 
+  // Export du jeu FILTRÉ courant (commissions & transactions).
+  const exportData = (): ExportOptions => ({
+    title: "Commissions & transactions",
+    subtitle: `${filtered.length} opération(s) · commission ${money(view.commission)}`,
+    columns: [
+      { header: "Date", key: "date" },
+      { header: "Établissement / Contrepartie", key: "party" },
+      { header: "Acteur", key: "actor" },
+      { header: "Type", key: "type" },
+      { header: "Moyen", key: "channel" },
+      { header: "Montant", key: "amount", align: "right" },
+      { header: "Commission", key: "commission", align: "right" },
+      { header: "Statut", key: "status" },
+    ],
+    rows: filtered.map((t) => {
+      const p = txParty(t);
+      return {
+        date: t.created_at ? new Date(t.created_at).toLocaleString("fr-FR") : "",
+        party: [p.title, p.sub].filter(Boolean).join(" — "),
+        actor: t.actor ?? "",
+        type: TYPE_LABEL[t.type] ?? t.type,
+        channel: channelLabel(t.channel),
+        amount: money(t.amount, t.currency),
+        commission: money(t.commission, t.currency),
+        status: t.status,
+      };
+    }),
+    filename: "commissions-abc-pay",
+  });
+  const exportCsv = () => {
+    const header = ["Date", "Établissement/Contrepartie", "Acteur", "Type", "Moyen", "Montant", "Commission", "Devise", "Statut"];
+    const rows = filtered.map((t) => {
+      const p = txParty(t);
+      return [
+        t.created_at ? new Date(t.created_at).toLocaleString("fr-FR") : "",
+        [p.title, p.sub].filter(Boolean).join(" — "),
+        t.actor ?? "",
+        TYPE_LABEL[t.type] ?? t.type,
+        channelLabel(t.channel),
+        t.amount,
+        t.commission,
+        t.currency,
+        t.status,
+      ];
+    });
+    downloadCsv(`commissions-abc-pay-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows]);
+  };
+
   return (
     <div className="mx-auto w-full max-w-[1100px] px-5 py-6 md:px-8 md:py-8">
-      <PageHeader title="Commissions & transactions" subtitle="Volume encaissé et commissions abc pay sur la plateforme" />
+      <PageHeader
+        title="Commissions & transactions"
+        subtitle="Volume encaissé et commissions abc pay sur la plateforme"
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" fullWidth={false} icon={FileText} disabled={filtered.length === 0} onClick={() => exportPdf(exportData())}>PDF</Button>
+            <Button variant="outline" fullWidth={false} icon={FileSpreadsheet} disabled={filtered.length === 0} onClick={() => exportExcel(exportData())}>Excel</Button>
+            <Button fullWidth={false} icon={Download} disabled={filtered.length === 0} onClick={exportCsv}>CSV</Button>
+          </div>
+        }
+      />
 
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         {/* Volume ventilé par devise : USD et CDF séparés (jamais mélangés). */}
@@ -140,6 +200,7 @@ export default function CommissionsPage() {
               <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-gray-500">
                 <th className="pb-3 pr-3">Date</th>
                 <th className="pb-3 pr-3">Établissement / Contrepartie</th>
+                <th className="pb-3 pr-3">Acteur</th>
                 <th className="pb-3 pr-3">Type</th>
                 <th className="pb-3 pr-3">Moyen</th>
                 <th className="pb-3 pr-3 text-right">Montant</th>
@@ -149,7 +210,7 @@ export default function CommissionsPage() {
             </thead>
             <tbody>
               {state === "loading"
-                ? [0, 1, 2, 3].map((i) => <tr key={i} className="border-t border-white"><td colSpan={7} className="py-3"><div className="h-4 animate-pulse rounded bg-white" /></td></tr>)
+                ? [0, 1, 2, 3].map((i) => <tr key={i} className="border-t border-white"><td colSpan={8} className="py-3"><div className="h-4 animate-pulse rounded bg-white" /></td></tr>)
                 : pageItems.map((t) => (
                     <tr key={t.id} className="border-t border-white text-[13px]">
                       <td className="py-3 pr-3 text-gray-500">{fdate(t.created_at)}</td>
@@ -164,6 +225,7 @@ export default function CommissionsPage() {
                           );
                         })()}
                       </td>
+                      <td className="py-3 pr-3"><div className="text-ink">{t.actor ?? "—"}</div>{t.actor_phone ? <div className="text-[11px] text-gray-500">{t.actor_phone}</div> : null}</td>
                       <td className="py-3 pr-3 text-gray-500">{TYPE_LABEL[t.type] ?? t.type}</td>
                       <td className="py-3 pr-3 text-gray-500">{channelLabel(t.channel)}</td>
                       <td className="py-3 pr-3 text-right font-bold text-ink">{money(t.amount, t.currency)}</td>

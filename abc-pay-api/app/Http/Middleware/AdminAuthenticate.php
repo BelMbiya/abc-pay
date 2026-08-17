@@ -40,7 +40,14 @@ class AdminAuthenticate
         }
 
         $request->setUserResolver(fn () => $admin);
-        $request->attributes->set('admin_role', $claims['role'] ?? null);
+        $request->attributes->set('admin_role', $admin->role);
+
+        // Changement de mot de passe obligatoire à la 1re connexion (admin créé par un autre admin).
+        if ($admin->must_change_password && $request->path() !== 'api/v1/admin/password') {
+            return response()->json([
+                'error' => ['code' => 'must_change_password', 'message' => 'Vous devez changer votre mot de passe avant de continuer.'],
+            ], 403);
+        }
 
         return $next($request);
     }

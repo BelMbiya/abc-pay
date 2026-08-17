@@ -12,7 +12,12 @@ class EstablishmentStaff extends Model
 
     protected $table = 'establishment_staff';
 
-    protected $fillable = ['establishment_id', 'user_id', 'role'];
+    protected $fillable = ['establishment_id', 'user_id', 'role', 'kyc_required'];
+
+    protected function casts(): array
+    {
+        return ['kyc_required' => 'boolean'];
+    }
 
     public function user(): BelongsTo
     {

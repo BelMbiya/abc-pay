@@ -1,24 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Wallet, TrendingUp, Percent, Banknote, Download, FileSpreadsheet } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Wallet, TrendingUp, Percent, Banknote, Download, FileSpreadsheet, FileText } from "lucide-react";
 import { Button } from "@/components/ui";
 import { StatCard, PageHeader } from "@/components/backoffice/StatCard";
 import { money } from "@/lib/money";
 import { fetchStaffDashboard, CHANNEL_COLORS, type EstablishmentDashboard } from "@/lib/dashboard-api";
-import { fetchStaffTransactions } from "@/lib/tx-views-api";
+import { fetchStaffTransactions, type TxRow } from "@/lib/tx-views-api";
 import { channelLabel } from "@/lib/transactions-api";
 import { downloadCsv } from "@/lib/csv";
+import { exportPdf, exportExcel, type ExportOptions } from "@/lib/export";
+import { PERIODS, inPeriod, DEFAULT_PERIOD, type Period } from "@/lib/period";
 
 export default function RapportsPage() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [d, setD] = useState<EstablishmentDashboard | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [txs, setTxs] = useState<TxRow[]>([]);
+  const [period, setPeriod] = useState<Period>(DEFAULT_PERIOD);
 
   const load = useCallback(async () => {
     setState("loading");
     try {
-      setD(await fetchStaffDashboard());
+      const [dash, tx] = await Promise.all([fetchStaffDashboard(), fetchStaffTransactions()]);
+      setD(dash);
+      setTxs(tx.transactions);
       setState("ready");
     } catch {
       setState("error");
@@ -27,34 +32,82 @@ export default function RapportsPage() {
 
   useEffect(() => {
     let active = true;
-    fetchStaffDashboard().then((r) => active && (setD(r), setState("ready"))).catch(() => active && setState("error"));
+    Promise.all([fetchStaffDashboard(), fetchStaffTransactions()])
+      .then(([dash, tx]) => {
+        if (!active) return;
+        setD(dash);
+        setTxs(tx.transactions);
+        setState("ready");
+      })
+      .catch(() => active && setState("error"));
     return () => {
       active = false;
     };
   }, []);
 
-  const exportCsv = async () => {
-    setExporting(true);
-    try {
-      const { transactions } = await fetchStaffTransactions();
-      const header = ["Date", "Élève", "Matricule", "Type de frais", "Moyen", "Montant (USD)", "Commission (USD)", "Net (USD)", "Statut", "N° reçu"];
-      const rows = transactions.map((t) => [
-        t.created_at ? new Date(t.created_at).toLocaleString("fr-FR") : "",
-        t.student_name ?? "",
-        t.student_matricule ?? "",
-        t.fee_type ?? "",
-        channelLabel(t.channel),
-        t.amount,
-        t.commission,
-        t.net,
-        t.status,
-        t.receipt_number ?? "",
-      ]);
-      downloadCsv(`rapport-abc-pay-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows]);
-    } finally {
-      setExporting(false);
-    }
+  // Journal filtré par période (le rapport suit le filtre en cours).
+  const filtered = useMemo(() => txs.filter((t) => inPeriod(t.created_at, period)), [txs, period]);
+  const scoped = useMemo(() => {
+    const done = filtered.filter((t) => t.status === "confirmee");
+    return {
+      count: done.length,
+      collected: done.reduce((a, t) => a + t.amount, 0),
+      commission: done.reduce((a, t) => a + t.commission, 0),
+      net: done.reduce((a, t) => a + t.net, 0),
+    };
+  }, [filtered]);
+
+  const periodLabel = PERIODS.find((p) => p.id === period)?.label ?? "";
+
+  const exportCsv = () => {
+    const header = ["Date", "Élève", "Matricule", "Type de frais", "Acteur", "Moyen", "Montant", "Commission", "Net", "Devise", "Statut", "N° reçu"];
+    const rows = filtered.map((t) => [
+      t.created_at ? new Date(t.created_at).toLocaleString("fr-FR") : "",
+      t.student_name ?? "",
+      t.student_matricule ?? "",
+      t.fee_type ?? "",
+      t.actor ?? "",
+      channelLabel(t.channel),
+      t.amount,
+      t.commission,
+      t.net,
+      t.currency,
+      t.status,
+      t.receipt_number ?? "",
+    ]);
+    downloadCsv(`rapport-abc-pay-${period}-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows]);
   };
+
+  // Jeu d'export (PDF/Excel) — TOUJOURS sur le journal filtré courant.
+  const exportData = (): ExportOptions => ({
+    title: "Rapport — encaissements",
+    subtitle: `${periodLabel} · ${scoped.count} paiement(s) · encaissé ${money(scoped.collected)} · commission ${money(scoped.commission)} · net ${money(scoped.net)}`,
+    columns: [
+      { header: "Date", key: "date" },
+      { header: "Élève", key: "student" },
+      { header: "Matricule", key: "matricule" },
+      { header: "Type", key: "fee" },
+      { header: "Acteur", key: "actor" },
+      { header: "Moyen", key: "channel" },
+      { header: "Montant", key: "amount", align: "right" },
+      { header: "Commission", key: "commission", align: "right" },
+      { header: "Net", key: "net", align: "right" },
+      { header: "Statut", key: "status" },
+    ],
+    rows: filtered.map((t) => ({
+      date: t.created_at ? new Date(t.created_at).toLocaleString("fr-FR") : "",
+      student: t.student_name ?? "",
+      matricule: t.student_matricule ?? "",
+      fee: t.fee_type ?? "",
+      actor: t.actor ?? "",
+      channel: channelLabel(t.channel),
+      amount: money(t.amount, t.currency),
+      commission: money(t.commission, t.currency),
+      net: money(t.net, t.currency),
+      status: t.status,
+    })),
+    filename: `rapport-abc-pay-${period}`,
+  });
 
   const k = d?.kpis;
 
@@ -63,13 +116,35 @@ export default function RapportsPage() {
       <PageHeader
         title="Rapports"
         subtitle="Synthèse de vos encaissements et export comptable"
-        actions={<Button fullWidth={false} icon={Download} disabled={exporting || state !== "ready"} onClick={exportCsv}>{exporting ? "Export…" : "Exporter (CSV)"}</Button>}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" fullWidth={false} icon={FileText} disabled={state !== "ready" || filtered.length === 0} onClick={() => exportPdf(exportData())}>PDF</Button>
+            <Button variant="outline" fullWidth={false} icon={FileSpreadsheet} disabled={state !== "ready" || filtered.length === 0} onClick={() => exportExcel(exportData())}>Excel</Button>
+            <Button fullWidth={false} icon={Download} disabled={state !== "ready" || filtered.length === 0} onClick={exportCsv}>CSV</Button>
+          </div>
+        }
       />
 
       {state === "error" ? (
         <div className="rounded-2xl bg-gray-100 py-16 text-center text-[13px] text-gray-500">Impossible de charger les rapports. <button onClick={load} className="font-bold text-blue-600">Réessayer</button></div>
       ) : (
         <>
+          {/* Filtre période : le journal exporté et la synthèse ci-dessous le suivent. */}
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl bg-gray-100 px-4 py-3">
+            <label htmlFor="periode" className="text-[12.5px] font-bold text-gray-700">Période</label>
+            <select
+              id="periode"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as Period)}
+              className="rounded-[10px] border-[1.5px] border-white bg-white px-3 py-2 text-[13px] font-semibold text-ink focus:border-blue-500 focus:outline-none"
+            >
+              {PERIODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+            <span className="text-[12px] text-gray-500">
+              {periodLabel} — <b className="text-gray-700">{scoped.count}</b> paiement(s) · encaissé <b className="text-gray-700">{money(scoped.collected)}</b> · commission {money(scoped.commission)} · net <b className="text-gray-700">{money(scoped.net)}</b>
+            </span>
+          </div>
+
           <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
             <StatCard label="Attendu" value={`${money(k?.expected ?? 0)}`} icon={Wallet} hint="Total à recouvrer" />
             <StatCard label="Encaissé" value={`${money(k?.collected ?? 0)}`} icon={TrendingUp} hint="Confirmé" />

@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>abc pay — L'argent connecté en RDC : envoyer, recevoir, payer, encaisser</title>
+<meta name="description" content="abc pay, la plateforme de paiement pensée pour la RDC : envoyer, recevoir, payer un marchand, encaisser. Tuition règle la scolarité en 59 secondes.">
+<template id="__bundler_thumbnail" data-bg-color="#00279C">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#00279C"></rect>
+    <path d="M420 300h360l-60 120h-300z" fill="#FCB326"></path>
+    <path d="M420 300v200l120-80z" fill="#ffffff"></path>
+    <text x="600" y="600" text-anchor="middle" font-family="Sora,sans-serif" font-size="86" font-weight="700" fill="#ffffff">abc pay</text>
+  </svg>
+</template>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@400;600;700;800&display=swap');
+:root{--font-sora:'Sora';--font-inter:'Inter';}
+html,body{margin:0}
+
+/* Styles de la landing /bienvenue.
+   Le design d'origine est 100 % inline. On garde ici : les keyframes (référencées
+   par `animation:` dans le markup), les resets bornés à #page, et surtout les
+   TOKENS de thème (clair/sombre). Le markup a été tokenisé : surfaces claires,
+   textes et bordures pointent vers ces variables ; le bleu de marque (#00279C /
+   #001A63) et l'or (#FCB326) restent littéraux car ils fonctionnent déjà sur fond
+   sombre. Polices Sora/Inter via les variables next/font. */
+
+@keyframes wUp { from { opacity: 0; transform: translateY(0.7em); } to { opacity: 1; transform: none; } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes ring { 0% { transform: scale(0.65); opacity: 0.85; } 100% { transform: scale(2.4); opacity: 0; } }
+@keyframes spinSlow { to { transform: rotate(360deg); } }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-11px); } }
+@keyframes tick { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+/* -------- Palette claire (défaut) -------- */
+#page {
+  --s-page: #ffffff;      /* fond de page          */
+  --s-card: #ffffff;      /* cartes                */
+  --s-soft: #F4F7FF;      /* fonds doux            */
+  --s-panel: #E7EBF7;     /* panneaux / tuiles     */
+  --s-gold-soft: #FFF6E6; /* pastille or           */
+  --s-ok-soft: #E7F7EF;   /* pastille verte        */
+  --s-info-soft: #E9F4FE; /* pastille info         */
+  --t-ink: #0B1A44;       /* texte principal       */
+  --t-muted: #55618A;     /* texte secondaire      */
+  --t-faint: #9AA6C6;     /* libellés discrets     */
+  --t-brand: #00279C;     /* texte de marque       */
+  --t-link: #0B3FD6;      /* liens survolés        */
+  --t-gold: #B87D07;      /* texte or foncé        */
+  --t-ok: #12855A;        /* texte succès          */
+  --ln: #DDE4F5;          /* bordures              */
+
+  /* `clip` (et non `hidden`) : masque le débordement horizontal SANS créer de
+     conteneur de défilement — sinon la nav `position:sticky` ne colle plus. */
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+  background: var(--s-page);
+}
+
+/* #19 — centre le glyphe ☰ dans son carré arrondi (il n'avait pas d'alignement). */
+#page #burger {
+  align-items: center;
+  justify-content: center;
+}
+
+/* #19 — barre utilitaire bleue : équilibre les groupes (libellé à gauche,
+   téléphone/langue à droite) au lieu de tout coller à gauche. */
+#page #topbar {
+  justify-content: space-between;
+}
+
+/* Responsive : on masque le bandeau utilitaire bleu au-dessus du hero sur mobile
+   (breakpoint aligné sur la logique JS, < 760px). */
+@media (max-width: 759px) {
+  #page #utility-bar {
+    display: none !important;
+  }
+}
+
+/* #20 — filigrane « abc pay » (texte navy très transparent) invisible en sombre :
+   on l'éclaircit en mode sombre pour qu'il redevienne lisible derrière les photos. */
+#page[data-theme="dark"] [style*="rgba(11,26,68,.07)"] {
+  color: rgba(233, 238, 249, 0.06) !important;
+}
+@media (prefers-color-scheme: dark) {
+  #page:not([data-theme="light"]) [style*="rgba(11,26,68,.07)"] {
+    color: rgba(233, 238, 249, 0.06) !important;
+  }
+}
+
+/* -------- Palette sombre (auto via système, sauf si l'utilisateur force le clair) -------- */
+@media (prefers-color-scheme: dark) {
+  #page:not([data-theme="light"]) {
+    --s-page: #0A1020; --s-card: #131A2E; --s-soft: #171F35; --s-panel: #1E2740;
+    --s-gold-soft: #2A2411; --s-ok-soft: #12271C; --s-info-soft: #0F2233;
+    --t-ink: #EAEEF9; --t-muted: #AAB4CF; --t-faint: #8A96B4;
+    --t-brand: #8FB4FF; --t-link: #A9C4FF; --t-gold: #FCB326; --t-ok: #34D399;
+    --ln: #2A3550;
+  }
+}
+/* -------- Palette sombre (choix explicite de l'utilisateur) -------- */
+#page[data-theme="dark"] {
+  --s-page: #0A1020; --s-card: #131A2E; --s-soft: #171F35; --s-panel: #1E2740;
+  --s-gold-soft: #2A2411; --s-ok-soft: #12271C; --s-info-soft: #0F2233;
+  --t-ink: #EAEEF9; --t-muted: #AAB4CF; --t-faint: #8A96B4;
+  --t-brand: #8FB4FF; --t-link: #A9C4FF; --t-gold: #FCB326; --t-ok: #34D399;
+  --ln: #2A3550;
+}
+
+#page a { color: var(--t-brand); text-decoration: none; }
+#page a:hover { color: var(--t-link); }
+#page summary { list-style: none; cursor: pointer; }
+#page summary::-webkit-details-marker { display: none; }
+#page ::selection { background: #FCB326; color: #00279C; }
+
+/* Focus des champs (l'attribut style-focus du design a été retiré) */
+#page input:focus,
+#page textarea:focus,
+#page select:focus {
+  outline: none;
+  border-color: var(--t-brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--t-brand) 22%, transparent);
+}
+
+html:has(#page) { scroll-behavior: smooth; }
+
+/* Segmented control « Comment vous recontacter ? » (WhatsApp / Email / Appel).
+   État piloté par la classe .is-active (via classList) — jamais par du style inline
+   en JS, bloqué par la CSP à nonce. */
+#page .abc-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+#page .abc-seg__btn {
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 11px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--ln);
+  background: var(--s-card);
+  color: var(--t-ink);
+  cursor: pointer;
+  transition: background .2s ease, color .2s ease, border-color .2s ease;
+}
+#page .abc-seg__btn:hover { border-color: var(--t-brand); }
+#page .abc-seg__btn.is-active {
+  background: #00279C;
+  border-color: #00279C;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #page *, #page *::before, #page *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============================================================
+   MOBILE FIRST (§21) — la mise en page est décrite ici, en CSS,
+   et non plus calculée en JavaScript. Les grilles du markup
+   portent les valeurs desktop en style inline ; on les ramène à
+   une colonne par défaut (d'où !important, seul moyen de battre
+   un style inline) et on rétablit le desktop en media query.
+   Le premier rendu est donc déjà le bon rendu sur téléphone.
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box}
+input,select,textarea,button{max-width:100%}
+#f-row>div{min-width:0}
+
+#grid-hero,#grid-probleme,#grid-canaux,#grid-tuition,#grid-tuition-head,
+#grid-securite,#grid-faq,#grid-partenariat,#grid-atouts,
+#grid-atouts-cards,#grid-capacites,#grid-footer,#diagramme,#f-row{
+  grid-template-columns:minmax(0,1fr)!important;
+}
+#canaux-chips{grid-template-columns:repeat(2,1fr)!important}
+#canaux-svg{display:none!important}
+#diagramme{max-width:460px!important;gap:18px!important}
+#media-probleme,#media-tuition{width:100%;max-width:400px;margin-left:auto;margin-right:auto}
+#navlinks{display:none!important}
+#burger{display:inline-flex!important}
+#navcta{display:none!important}
+#navlogin,#nav-signup{display:none!important}
+
+@media (min-width:520px){
+  #navcta{display:inline-flex!important}
+}
+@media (min-width:620px){
+  #grid-atouts-cards{grid-template-columns:repeat(2,1fr)!important}
+}
+@media (min-width:560px){
+  #f-row{grid-template-columns:1fr 1fr!important}
+}
+@media (min-width:640px){
+  #grid-footer{grid-template-columns:repeat(2,1fr)!important}
+}
+@media (min-width:760px){
+  #navlogin,#nav-signup{display:inline-flex!important}
+  #canaux-chips{grid-template-columns:1fr!important}
+  #canaux-svg{display:block!important}
+  #diagramme{grid-template-columns:auto 54px minmax(0,1fr)!important;max-width:580px!important;gap:clamp(8px,1.4vw,18px)!important}
+}
+@media (min-width:980px){
+  #grid-hero,#grid-probleme,#grid-canaux,#grid-securite,#grid-faq,#grid-partenariat{
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  }
+  #grid-hero{grid-template-columns:minmax(0,.94fr) minmax(0,1.06fr)!important}
+  #grid-probleme{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)!important}
+  #grid-tuition{grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr)!important}
+  #grid-tuition-head{grid-template-columns:minmax(0,1fr)!important}
+  #grid-faq{grid-template-columns:minmax(0,.6fr) minmax(0,1.4fr)!important}
+  #media-probleme,#media-tuition{max-width:560px;margin-left:0;margin-right:0}
+}
+@media (min-width:1080px){
+  #grid-capacites{grid-template-columns:repeat(3,1fr)!important}
+  #grid-footer{grid-template-columns:1.6fr 1fr 1fr 1.2fr!important}
+}
+@media (min-width:1100px){
+  #navlinks{display:flex!important}
+  #burger{display:none!important}
+  #grid-atouts{grid-template-columns:minmax(0,.8fr) minmax(0,2.2fr)!important}
+  #grid-atouts-cards{grid-template-columns:repeat(4,1fr)!important}
+}
+
+/* §2 : le nom ne doit jamais s'afficher en « ABC PAY ». */
+#atouts [data-en="01 · abc pay"]{text-transform:none!important;letter-spacing:.06em}
+
+</style>
+</head>
+<body>
+<div id="page" style="background:var(--s-page);color:var(--t-ink);font-family:var(--font-inter),system-ui,sans-serif">
+
+  <!-- ============ TOP UTILITY BAR ============ -->
+  <div id="utility-bar" style="background:#001A63;color:#fff">
+    <div id="topbar" style="max-width:1300px;margin:0 auto;padding:9px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <span style="font-size:12.5px;color:rgba(255,255,255,.62);font-weight:500" data-en="Paying a tuition fee?">Vous payez une scolarité ?</span>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <a href="#tuition" style="font-size:12px;font-weight:600;color:#fff;border:1px solid rgba(255,255,255,.24);border-radius:999px;padding:5px 12px" style-hover="background:#FCB326;color:#00279C;border-color:var(--ln)" data-en="Pay a tuition fee">Payer une scolarité</a>
+        <a href="#tuition" style="font-size:12px;font-weight:600;color:#fff;border:1px solid rgba(255,255,255,.24);border-radius:999px;padding:5px 12px" style-hover="background:#FCB326;color:#00279C;border-color:var(--ln)" data-en="Find a receipt">Retrouver un reçu</a>
+        </div>
+      <div style="display:flex;align-items:center;gap:14px;margin-left:auto">
+        <span style="font-size:12.5px;color:rgba(255,255,255,.62)">+243 98 08 44 444</span>
+        <div role="group" aria-label="Langue" style="display:flex;align-items:center;gap:2px">
+          <button id="lang-fr" type="button" data-act="setFr" style="border:0;cursor:pointer;font-family:Inter,sans-serif;font-size:11.5px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:999px;background:#FCB326;color:#00279C">FR</button>
+          <button id="lang-en" type="button" data-act="setEn" style="border:0;cursor:pointer;font-family:Inter,sans-serif;font-size:11.5px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:999px;background:transparent;color:rgba(255,255,255,.7)">EN</button><button id="abc-theme-toggle" type="button" data-act="toggleTheme" aria-label="Basculer le thème clair/sombre" style="border:0;cursor:pointer;font-size:13px;line-height:1;width:27px;height:23px;border-radius:999px;background:rgba(255,255,255,.14);color:#fff;margin-left:8px;display:inline-flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px;display:block"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ NAV ============ -->
+  <header id="nav" style="position:sticky;top:0;z-index:90;background:var(--s-card);border-bottom:1px solid var(--ln);transition:box-shadow .3s ease">
+    <div style="max-width:1300px;margin:0 auto;padding:12px 22px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:24px">
+      <a href="#page" aria-label="abc pay — accueil" style="display:flex;align-items:center;gap:9px;flex-shrink:0">
+        <img src="assets/site/logo-abcpay-symbol.png" alt="" style="height:40px;width:auto;display:block"><span style="font-family:Sora,sans-serif;font-weight:700;font-size:19px;letter-spacing:-.02em;color:var(--t-ink)">abc pay</span>
+      </a>
+      <nav id="navlinks" style="display:flex;align-items:center;justify-content:center;gap:26px;font-size:14.5px;font-weight:600">
+        <a href="#atouts" data-en="abc pay" style="color:var(--t-ink)" style-hover="color:var(--t-brand)">abc pay</a>
+        <a href="#canaux" data-en="Payment methods" style="color:var(--t-ink)" style-hover="color:var(--t-brand)">Moyens de paiement</a>
+        <a href="#partenariat" data-en="Merchants / Partners" style="color:var(--t-ink)" style-hover="color:var(--t-brand)">Marchands / Partenaires</a>
+        <a href="#tuition" data-en="Tuition" style="color:var(--t-ink)" style-hover="color:var(--t-brand)">Tuition</a>
+        <a href="#faq" data-en="FAQ" style="color:var(--t-ink)" style-hover="color:var(--t-brand)">FAQ</a>
+      </nav>
+      <div style="display:flex;align-items:center;gap:10px;justify-content:flex-end;grid-column:3">
+        
+        
+        <button id="burger" type="button" aria-label="Menu" data-act="toggleMenu" style="display:none;border:1px solid var(--ln);background:var(--s-card);color:var(--t-brand);width:42px;height:42px;border-radius:12px;cursor:pointer;font-size:17px;line-height:1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" style="width:19px;height:19px;display:block"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </div>
+    </div>
+    <div id="mobilemenu" style="display:none;padding:6px 22px 20px;background:var(--s-card);border-top:1px solid var(--ln)">
+      <div style="display:grid">
+        <a href="#atouts" data-en="abc pay" style="color:var(--t-ink);padding:13px 2px;border-bottom:1px solid var(--ln);font-weight:600">abc pay</a>
+        <a href="#canaux" data-en="Payment methods" style="color:var(--t-ink);padding:13px 2px;border-bottom:1px solid var(--ln);font-weight:600">Moyens de paiement</a>
+        <a href="#partenariat" data-en="Merchants / Partners" style="color:var(--t-ink);padding:13px 2px;border-bottom:1px solid var(--ln);font-weight:600">Marchands / Partenaires</a>
+        <a href="#tuition" data-en="Tuition" style="color:var(--t-ink);padding:13px 2px;border-bottom:1px solid var(--ln);font-weight:600">Tuition</a>
+        <a href="#faq" data-en="FAQ" style="color:var(--t-ink);padding:13px 2px;font-weight:600">FAQ</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ HERO ============ -->
+  <section id="hero" style="position:relative;overflow:hidden;background:var(--s-soft);padding:clamp(12px,1.6vw,24px) clamp(28px,5vw,72px) clamp(44px,5vw,72px)">
+    <canvas id="herofield" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%;z-index:0;display:block;pointer-events:none;opacity:.28"></canvas>
+    <div id="grid-hero" style="position:relative;z-index:2;max-width:1300px;margin:0 auto;display:grid;grid-template-columns:minmax(0,.94fr) minmax(0,1.06fr);gap:clamp(16px,2.2vw,32px);align-items:center">
+      <div style="display:flex;gap:clamp(14px,2vw,26px)">
+        <div>
+          <h1 style="font-family:Sora,sans-serif;font-weight:800;font-size:clamp(40px,5.8vw,76px);line-height:1.02;letter-spacing:-.035em;margin:0;color:var(--t-ink);text-wrap:balance">
+            <span data-en="Your money, connected every day."><span style="display:inline-block;animation:wUp .7s .08s both">Votre&nbsp;</span><span style="display:inline-block;animation:wUp .7s .16s both">argent,&nbsp;</span><span style="display:inline-block;animation:wUp .7s .26s both;color:var(--t-brand)">connecté&nbsp;</span><span style="display:inline-block;animation:wUp .7s .34s both;color:var(--t-brand)">au&nbsp;</span><span style="display:inline-block;animation:wUp .7s .42s both;color:var(--t-brand)">quotidien.</span></span>
+            
+          </h1>
+
+          <p style="font-size:clamp(15.5px,1.25vw,18px);line-height:1.66;color:var(--t-muted);margin:20px 0 0;max-width:52ch;animation:fadeUp .7s .56s both;text-wrap:pretty" data-en="Pay for your everyday needs by connecting the payment methods you already use, without juggling between several apps. Pay, send and receive, simply.">Payez vos besoins du quotidien en reliant vos moyens de paiement existants, sans jongler entre plusieurs applications. Payez, envoyez et recevez simplement.</p>
+
+          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:28px;animation:fadeUp .7s .62s both">
+            <a href="#partenariat" style="display:inline-flex;align-items:center;gap:9px;background:#00279C;color:#fff;font-weight:700;font-size:15.5px;padding:15px 25px;border-radius:999px" style-hover="background:#0B3FD6;color:#fff"><span data-en="Use abc pay">Utiliser abc pay</span> <span aria-hidden="true">›</span></a>
+            <a href="#tuition" style="display:inline-flex;align-items:center;gap:10px;background:var(--s-card);border:1px solid var(--ln);color:var(--t-ink);font-family:Inter,sans-serif;font-weight:600;font-size:15.5px;padding:15px 22px;border-radius:999px;cursor:pointer" style-hover="border-color:var(--ln);color:var(--t-brand)">
+              <img src="assets/site/ic-tuition.png" alt="" width="20" height="20" loading="lazy" style="width:20px;height:20px;display:block">
+              <span data-en="Discover Tuition">Découvrir Tuition</span>
+            </a>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- visuel du hero -->
+      <div id="hero-stage" style="position:relative;display:flex;justify-content:center;align-self:end;margin-bottom:calc(-1 * clamp(44px,5vw,72px));animation:fadeUp .8s .3s both">
+        <img src="assets/site/hero-femme-ombre.png" alt="Une utilisatrice d'abc pay" width="684" height="899" fetchpriority="high" style="width:100%;max-width:620px;height:auto;display:block">
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 01 · ATOUTS ============ -->
+  <section id="atouts" style="background:var(--s-card);padding:clamp(58px,7vw,100px) 22px">
+    <div id="grid-atouts" style="max-width:1300px;margin:0 auto;display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,2.2fr);gap:clamp(28px,4vw,52px);align-items:start">
+      <div data-reveal="">
+        <span style="display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t-brand);background:var(--s-soft);border-radius:999px;padding:6px 12px" data-en="01 · abc pay">01 · abc pay</span>
+        <h2 style="font-family:Sora,sans-serif;font-weight:800;font-size:clamp(26px,3.2vw,40px);line-height:1.12;letter-spacing:-.03em;margin:16px 0 0;color:var(--t-ink);text-wrap:balance" data-en="Everything you pay for. More simply.">Tout ce que vous payez. Plus simplement.</h2>
+        <p style="font-size:15.5px;line-height:1.66;color:var(--t-muted);margin:14px 0 0;max-width:38ch;text-wrap:pretty" data-en="abc pay supports the payment needs of every day.">abc pay accompagne les besoins de paiement du quotidien.</p>
+        <a href="#tuition" style="display:inline-flex;align-items:center;gap:8px;margin-top:22px;border:1px solid var(--ln);border-radius:999px;padding:12px 20px;font-size:14.5px;font-weight:600;color:var(--t-brand)" style-hover="border-color:var(--ln);background:var(--s-soft);color:var(--t-brand)"><span data-en="Explore the platform">Explorer la plateforme</span> <span aria-hidden="true">›</span></a>
+      </div>
+      <div id="grid-atouts-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+        <div data-reveal="" style="background:var(--s-soft);border-radius:20px;padding:22px;transition:transform .35s ease" style-hover="transform:translateY(-6px)">
+          <span aria-hidden="true" style="width:40px;height:40px;border-radius:12px;background:var(--s-card);display:flex;align-items:center;justify-content:center"><img src="assets/site/ic-recevoir.png" alt="" width="22" height="22" loading="lazy" style="width:22px;height:22px;display:block"></span>
+          <h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:16.5px;margin:16px 0 0;color:var(--t-ink)" data-en="Send &amp; receive, every day">Envoyer &amp; recevoir, chaque jour</h3>
+          <p style="font-size:13.5px;line-height:1.6;color:var(--t-muted);margin:8px 0 0" data-en="Money to a relative, a merchant, a fee to settle: one flow, a receipt every time.">De l'argent à un proche, à un marchand, un frais à régler : un seul parcours, un reçu à chaque fois.</p>
+        </div>
+        <div data-reveal="" style="background:var(--s-gold-soft);border-radius:20px;padding:22px;transition:transform .35s ease" style-hover="transform:translateY(-6px)">
+          <span aria-hidden="true" style="width:40px;height:40px;border-radius:12px;background:var(--s-card);display:flex;align-items:center;justify-content:center"><img src="assets/site/ic-payer.png" alt="" width="22" height="22" loading="lazy" style="width:22px;height:22px;display:block"></span>
+          <h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:16.5px;margin:16px 0 0;color:var(--t-ink)" data-en="Your wallets, one flow">Vos portefeuilles, un parcours</h3>
+          <p style="font-size:13.5px;line-height:1.6;color:var(--t-muted);margin:8px 0 0" data-en="Airtel, Orange, M-Pesa, Afrimoney — plus card and transfer, behind one layer.">Airtel, Orange, M-Pesa, Afrimoney — plus carte et virement, derrière une seule couche.</p>
+        </div>
+        <div data-reveal="" style="background:var(--s-info-soft);border-radius:20px;padding:22px;transition:transform .35s ease" style-hover="transform:translateY(-6px)">
+          <span aria-hidden="true" style="width:40px;height:40px;border-radius:12px;background:var(--s-card);display:flex;align-items:center;justify-content:center"><img src="assets/site/ic-gerer.png" alt="" width="22" height="22" loading="lazy" style="width:22px;height:22px;display:block"></span>
+          <h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:16.5px;margin:16px 0 0;color:var(--t-ink)" data-en="Collect &amp; reconcile">Encaisser &amp; réconcilier</h3>
+          <p style="font-size:13.5px;line-height:1.6;color:var(--t-muted);margin:8px 0 0" data-en="One journal, filters, CSV export and an Excel template keyed on student number.">Un journal, des filtres, un export CSV et un gabarit Excel réconcilié par matricule.</p>
+        </div>
+        <div data-reveal="" style="background:var(--s-ok-soft);border-radius:20px;padding:22px;transition:transform .35s ease" style-hover="transform:translateY(-6px)">
+          <span aria-hidden="true" style="width:40px;height:40px;border-radius:12px;background:var(--s-card);display:flex;align-items:center;justify-content:center"><img src="assets/site/ic-securite.png" alt="" width="22" height="22" loading="lazy" style="width:22px;height:22px;display:block"></span>
+          <h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:16.5px;margin:16px 0 0;color:var(--t-ink)" data-en="Auditable by design">Auditable par construction</h3>
+          <p style="font-size:13.5px;line-height:1.6;color:var(--t-muted);margin:8px 0 0" data-en="Amounts computed server-side, no double debit, a complete and verifiable history.">Montants calculés côté serveur, aucun double débit, historique complet et vérifiable.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 02 · PROBLÈME ============ -->
+  <section id="probleme" style="background:var(--s-soft);padding:clamp(58px,7vw,100px) 22px">
+    <div id="grid-probleme" style="max-width:1300px;margin:0 auto;display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(30px,4.5vw,64px);align-items:center">
+      <div id="media-probleme" data-reveal="" style="position:relative">
+        <div style="position:relative;display:flex;justify-content:center">
+          <img src="assets/site/homme-pagne.png" alt="Un utilisateur règle un paiement depuis son téléphone" width="1183" height="1774" loading="lazy" style="width:100%;max-width:420px;height:auto;display:block">
+        </div>
+      </div>
+
+      <div>
+        <span data-reveal="" style="display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t-brand);background:var(--s-card);border-radius:999px;padding:6px 12px" data-en="02 · The everyday reality">02 · La réalité du quotidien</span>
+        <h2 data-reveal="" style="font-family:Sora,sans-serif;font-weight:800;font-size:clamp(27px,3.5vw,44px);line-height:1.12;letter-spacing:-.028em;margin:16px 0 0;color:var(--t-ink);text-wrap:balance">
+          <span data-en="Why lose time to">Pourquoi perdre du temps pour</span> <span style="position:relative;display:inline-block;font-style:italic"><span style="position:relative;z-index:1" data-en="paying">payer</span><span aria-hidden="true" data-bar="" style="position:absolute;left:-2px;right:-2px;bottom:.05em;height:.34em;background:#FCB326;z-index:0;transform-origin:left center"></span></span> <span data-en="?">?</span>
+        </h2>
+        <p data-reveal="" style="font-size:16px;line-height:1.68;color:var(--t-muted);margin:16px 0 0;max-width:56ch;text-wrap:pretty" data-en="A trip across town to hand over an envelope, a receipt book, a counter that closes at 3pm, a treasurer rekeying deposit slips. &lt;b&gt;Every step leaks time, money and trust&lt;/b&gt; — whether it is a transfer to a relative or a term's school fees.">Une traversée de la ville pour remettre une enveloppe, un carnet de reçus, un guichet qui ferme à 15h, un comptable qui ressaisit des bordereaux. <b style="color:var(--t-ink)">Chaque étape fait fuir du temps, de l'argent et de la confiance</b> — qu'il s'agisse d'un envoi à un proche ou d'une tranche de scolarité.</p>
+        <div style="display:grid;gap:10px;margin-top:24px;max-width:560px">
+          <div data-reveal="" style="display:flex;gap:13px;align-items:flex-start;background:var(--s-card);border:1px solid var(--ln);border-radius:14px;padding:15px 16px">
+            <span aria-hidden="true" style="flex-shrink:0;width:22px;height:22px;border-radius:7px;background:var(--s-gold-soft);color:var(--t-gold);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">!</span>
+            <div><div style="font-weight:700;font-size:14.5px;color:var(--t-ink)" data-en="A handwritten receipt proves nothing">Un reçu manuscrit ne prouve rien</div><p style="font-size:13.5px;line-height:1.55;color:var(--t-muted);margin:4px 0 0" data-en="Disputes end up on the head teacher's desk, without evidence on either side.">Les litiges finissent sur le bureau de la direction, sans preuve d'aucun côté.</p></div>
+          </div>
+          <div data-reveal="" style="display:flex;gap:13px;align-items:flex-start;background:var(--s-card);border:1px solid var(--ln);border-radius:14px;padding:15px 16px">
+            <span aria-hidden="true" style="flex-shrink:0;width:22px;height:22px;border-radius:7px;background:var(--s-gold-soft);color:var(--t-gold);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">!</span>
+            <div><div style="font-weight:700;font-size:14.5px;color:var(--t-ink)" data-en="Several operators, as many statements">Plusieurs opérateurs, autant de relevés</div><p style="font-size:13.5px;line-height:1.55;color:var(--t-muted);margin:4px 0 0" data-en="One Excel file rebuilt every month, and a balance always a week late.">Un fichier Excel reconstruit chaque mois, et un solde toujours en retard d'une semaine.</p></div>
+          </div>
+          <div data-reveal="" style="display:flex;gap:13px;align-items:flex-start;background:#00279C;border-radius:14px;padding:15px 16px">
+            <span aria-hidden="true" style="flex-shrink:0;width:22px;height:22px;border-radius:7px;background:#FCB326;color:#00279C;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">✓</span>
+            <div><div style="font-weight:700;font-size:14.5px;color:#fff" data-en="With abc pay">Avec abc pay</div><p style="font-size:13.5px;line-height:1.55;color:rgba(255,255,255,.82);margin:4px 0 0" data-en="One payment point, a receipt for the payer, a posted balance for the institution — same second.">Un point de paiement, un reçu pour le payeur, un solde imputé pour l'institution — même seconde.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 03 · CANAUX ============ -->
+  <section id="canaux" style="background:var(--s-card);padding:clamp(58px,7vw,100px) 22px">
+    <div id="grid-canaux" style="max-width:1300px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(30px,4.5vw,60px);align-items:center">
+      <div id="diagramme" data-reveal="" style="display:grid;grid-template-columns:auto 54px minmax(0,1fr);gap:clamp(8px,1.4vw,18px);align-items:center;width:100%;max-width:580px;margin-left:auto;margin-right:auto">
+        <div id="canaux-chips" style="display:grid;gap:8px">
+        <button data-chip="" type="button" style="display:flex;align-items:center;gap:9px;background:var(--s-card);border:1px solid var(--ln);border-radius:999px;padding:10px 15px;cursor:pointer;font-family:Sora,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.03em;color:var(--t-ink);text-align:left;white-space:nowrap;transition:background .35s ease,color .35s ease,border-color .35s ease">
+          <img src="assets/site/pay-airtel.jpg" alt="Airtel Money" width="26" height="26" loading="lazy" style="width:26px;height:26px;object-fit:contain;flex-shrink:0;border-radius:5px;background:#fff">Airtel Money
+        </button>
+        <button data-chip="" type="button" style="display:flex;align-items:center;gap:9px;background:var(--s-card);border:1px solid var(--ln);border-radius:999px;padding:10px 15px;cursor:pointer;font-family:Sora,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.03em;color:var(--t-ink);text-align:left;white-space:nowrap;transition:background .35s ease,color .35s ease,border-color .35s ease">
+          <img src="assets/site/pay-orange.jpg" alt="Orange Money" width="26" height="26" loading="lazy" style="width:26px;height:26px;object-fit:contain;flex-shrink:0;border-radius:5px;background:#fff">Orange Money
+        </button>
+        <button data-chip="" type="button" style="display:flex;align-items:center;gap:9px;background:var(--s-card);border:1px solid var(--ln);border-radius:999px;padding:10px 15px;cursor:pointer;font-family:Sora,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.03em;color:var(--t-ink);text-align:left;white-space:nowrap;transition:background .35s ease,color .35s ease,border-color .35s ease">
+          <img src="assets/site/pay-mpesa.jpg" alt="M-Pesa" width="26" height="26" loading="lazy" style="width:26px;height:26px;object-fit:contain;flex-shrink:0;border-radius:5px;background:#fff">M-Pesa
+        </button>
+        <button data-chip="" type="button" style="display:flex;align-items:center;gap:9px;background:var(--s-card);border:1px solid var(--ln);border-radius:999px;padding:10px 15px;cursor:pointer;font-family:Sora,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.03em;color:var(--t-ink);text-align:left;white-space:nowrap;transition:background .35s ease,color .35s ease,border-color .35s ease">
+          <img src="assets/site/pay-afrimoney.jpg" alt="Afrimoney" width="26" height="26" loading="lazy" style="width:26px;height:26px;object-fit:contain;flex-shrink:0;border-radius:5px;background:#fff">Afrimoney
+        </button>
+        <button data-chip="" type="button" style="display:flex;align-items:center;gap:9px;background:var(--s-card);border:1px solid var(--ln);border-radius:999px;padding:10px 15px;cursor:pointer;font-family:Sora,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.03em;color:var(--t-ink);text-align:left;white-space:nowrap;transition:background .35s ease,color .35s ease,border-color .35s ease">
+          <img src="assets/site/pay-visa.jpg" alt="Visa" width="26" height="26" loading="lazy" style="width:26px;height:26px;object-fit:contain;flex-shrink:0;border-radius:5px;background:#fff"><img src="assets/site/pay-mastercard.jpg" alt="Mastercard" width="26" height="26" loading="lazy" style="width:26px;height:26px;object-fit:contain;flex-shrink:0;border-radius:5px;background:#fff">Carte bancaire
+        </button>
+        <button data-chip="" type="button" style="display:flex;align-items:center;gap:9px;background:var(--s-card);border:1px solid var(--ln);border-radius:999px;padding:10px 15px;cursor:pointer;font-family:Sora,sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.03em;color:var(--t-ink);text-align:left;white-space:nowrap;transition:background .35s ease,color .35s ease,border-color .35s ease">
+          <img src="assets/site/qr-etablissement.svg" alt="QR code établissement" width="26" height="26" loading="lazy" style="width:26px;height:26px;object-fit:contain;flex-shrink:0;border-radius:5px;background:#fff;padding:1px">QR établissement
+        </button>
+        </div>
+
+        <svg id="canaux-svg" viewBox="0 0 54 300" preserveAspectRatio="none" aria-hidden="true" style="width:54px;height:100%;min-height:270px;display:block;overflow:visible">
+          <path d="M0 25 C34 25 20 150 54 150" fill="none" stroke="#DDE4F5" stroke-width="1" style="transition:stroke .35s ease,stroke-width .35s ease"></path>
+          <path d="M0 75 C34 75 20 150 54 150" fill="none" stroke="#DDE4F5" stroke-width="1" style="transition:stroke .35s ease,stroke-width .35s ease"></path>
+          <path d="M0 125 C34 125 20 150 54 150" fill="none" stroke="#DDE4F5" stroke-width="1" style="transition:stroke .35s ease,stroke-width .35s ease"></path>
+          <path d="M0 175 C34 175 20 150 54 150" fill="none" stroke="#DDE4F5" stroke-width="1" style="transition:stroke .35s ease,stroke-width .35s ease"></path>
+          <path d="M0 225 C34 225 20 150 54 150" fill="none" stroke="#DDE4F5" stroke-width="1" style="transition:stroke .35s ease,stroke-width .35s ease"></path>
+          <path d="M0 275 C34 275 20 150 54 150" fill="none" stroke="#DDE4F5" stroke-width="1" style="transition:stroke .35s ease,stroke-width .35s ease"></path>
+        </svg>
+
+        <div style="background:var(--s-card);border:1px solid var(--ln);border-radius:22px;padding:clamp(16px,1.8vw,22px);box-shadow:0 30px 60px -40px rgba(11,26,68,.45)">
+          <div style="display:flex;align-items:center;gap:11px">
+            <img src="assets/site/logo-abcpay-symbol.png" alt="abc pay" style="height:34px;width:auto;display:block;border-radius:6px">
+            <div>
+              <div style="font-family:Sora,sans-serif;font-weight:700;font-size:13.5px;color:var(--t-ink)" data-en="One collection point">Un seul point d'encaissement</div>
+              <div style="font-size:11px;color:var(--t-faint)" data-en="every channel, one journal">tous les canaux, un journal</div>
+            </div>
+          </div>
+
+          <div style="display:grid;gap:7px;margin-top:15px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--ln);border-radius:11px;padding:9px 11px">
+              <span style="font-size:12px;color:var(--t-muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Paiement · Airtel Money</span>
+              <span style="font-family:Sora,sans-serif;font-weight:700;font-size:12px;color:var(--t-ok);white-space:nowrap">Confirmé</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--ln);border-radius:11px;padding:9px 11px">
+              <span style="font-size:12px;color:var(--t-muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Paiement · Orange Money</span>
+              <span style="font-family:Sora,sans-serif;font-weight:700;font-size:12px;color:var(--t-ok);white-space:nowrap">Confirmé</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--ln);border-radius:11px;padding:9px 11px">
+              <span style="font-size:12px;color:var(--t-muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Paiement · M-Pesa</span>
+              <span style="font-family:Sora,sans-serif;font-weight:700;font-size:12px;color:var(--t-ok);white-space:nowrap">Confirmé</span>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#00279C;border-radius:14px;padding:11px 13px;margin-top:13px">
+            <span style="font-size:11.5px;font-weight:600;color:#fff" data-en="Settlement to the institution">Reversement à l'établissement</span>
+            <span style="font-size:10.5px;font-weight:800;color:#00279C;background:#FCB326;border-radius:999px;padding:4px 9px;white-space:nowrap" data-en="D+1">J+1</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <span data-reveal="" style="display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t-brand);background:var(--s-soft);border-radius:999px;padding:6px 12px" data-en="03 · Payment methods">03 · Moyens de paiement</span>
+        <h2 data-reveal="" style="font-family:Sora,sans-serif;font-weight:800;font-size:clamp(27px,3.5vw,44px);line-height:1.12;letter-spacing:-.028em;margin:16px 0 0;color:var(--t-ink);text-wrap:balance">
+          <span data-en="Your payment methods,">Vos moyens de paiement,</span> <span style="position:relative;display:inline-block;font-style:italic"><span style="position:relative;z-index:1" data-en="connected">connectés</span><span aria-hidden="true" data-bar="" style="position:absolute;left:-2px;right:-2px;bottom:.05em;height:.34em;background:#FCB326;z-index:0;transform-origin:left center"></span></span><span data-en=".">.</span>
+        </h2>
+        <p data-reveal="" style="font-size:16px;line-height:1.68;color:var(--t-muted);margin:16px 0 0;max-width:54ch;text-wrap:pretty" data-en="Forcing one operator means losing the payment. abc pay accepts &lt;b&gt;the available mobile wallets&lt;/b&gt;, card and transfer — and adding an operator never rewrites your flow.">Imposer un opérateur, c'est perdre le paiement. abc pay accepte <b style="color:var(--t-ink)">les portefeuilles mobiles disponibles</b>, la carte et le virement — et ajouter un opérateur ne réécrit jamais votre parcours.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:24px">
+          <div data-reveal="" style="border:1px solid var(--ln);border-radius:14px;padding:14px">
+            <div style="font-family:Sora,sans-serif;font-weight:700;font-size:14px;color:var(--t-ink)">USD / CDF</div>
+            <div style="font-size:12.5px;color:var(--t-muted);margin-top:4px" data-en="per institution">par établissement</div>
+          </div>
+          <div data-reveal="" style="border:1px solid var(--ln);border-radius:14px;padding:14px">
+            <div style="font-family:Sora,sans-serif;font-weight:700;font-size:14px;color:var(--t-ink)" data-en="FX on aggregates">FX sur agrégats</div>
+            <div style="font-size:12.5px;color:var(--t-muted);margin-top:4px" data-en="configurable rate">taux configurable</div>
+          </div>
+          <div data-reveal="" style="border:1px solid var(--ln);border-radius:14px;padding:14px">
+            <div style="font-family:Sora,sans-serif;font-weight:700;font-size:14px;color:var(--t-ink)" data-en="One journal">Un journal</div>
+            <div style="font-size:12.5px;color:var(--t-muted);margin-top:4px" data-en="CSV export">export CSV</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 04 · TUITION ============ -->
+  <section id="tuition" style="background:var(--s-soft);padding:clamp(58px,7vw,100px) 22px">
+    <div style="max-width:1300px;margin:0 auto">
+      <div id="grid-tuition-head" style="display:grid;grid-template-columns:minmax(0,1fr);gap:0;align-items:start;max-width:900px">
+        <span data-reveal="" style="display:inline-block;justify-self:start;margin-bottom:14px;white-space:nowrap;font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t-brand);background:var(--s-card);border-radius:999px;padding:6px 12px" data-en="04 · Flagship product · our innovation">04 · Produit phare · notre innovation</span>
+        <h2 data-reveal="" style="font-family:Sora,sans-serif;font-weight:800;font-size:clamp(28px,3.7vw,46px);line-height:1.1;letter-spacing:-.03em;margin:0;color:var(--t-ink);text-wrap:balance">
+          Tuition — <span data-en="education goes">la scolarité passe au</span> <span style="position:relative;display:inline-block;font-style:italic"><span style="position:relative;z-index:1" data-en="digital">numérique</span><span aria-hidden="true" data-bar="" style="position:absolute;left:-2px;right:-2px;bottom:.05em;height:.34em;background:#FCB326;z-index:0;transform-origin:left center"></span></span>
+        </h2>
+        <p data-reveal="" style="font-size:16px;line-height:1.68;color:var(--t-muted);margin:16px 0 0;max-width:64ch;text-wrap:pretty" data-en="With abc pay Tuition, parents, students and sponsors can settle school and academic fees with partner institutions directly from their phone.">Avec abc pay Tuition, parents, étudiants et sponsors peuvent régler les frais scolaires et académiques auprès des établissements partenaires directement depuis leur téléphone.</p>
+      </div>
+
+      <div id="grid-tuition" style="display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:clamp(28px,4vw,56px);align-items:start;margin-top:clamp(28px,3.4vw,44px)">
+        <div id="media-tuition" style="position:relative;display:flex;justify-content:center;align-items:flex-end">
+          <img src="assets/site/hero-toge.png" alt="Une diplômée dont la scolarité a été réglée avec abc pay Tuition" width="1181" height="1772" loading="lazy" style="width:100%;max-width:560px;height:auto;display:block;filter:drop-shadow(0 26px 42px rgba(11,26,68,.2))">
+          <img src="assets/site/phone-mockup.webp" alt="L'application abc pay ouverte sur un téléphone" width="760" height="1573" loading="lazy" style="position:absolute;right:0;bottom:0;width:34%;max-width:150px;height:auto;display:block;filter:drop-shadow(0 24px 40px rgba(11,26,68,.45));animation:bob 8s ease-in-out infinite">
+        </div>
+
+        <div style="display:grid;gap:11px">
+      <p data-reveal="" style="margin:0 0 10px;font-family:Sora,sans-serif;font-weight:800;font-size:clamp(22px,2.5vw,32px);line-height:1.16;letter-spacing:-.025em;color:var(--t-ink)" data-en="School fees settled in &lt;span style=&quot;font-style:italic;color:var(--t-brand)&quot;&gt;59 seconds&lt;/span&gt;.">La scolarité réglée en <span style="position:relative;display:inline-block;font-style:italic;color:var(--t-brand)"><span style="position:relative;z-index:1">59 secondes</span><span aria-hidden="true" data-bar="" style="position:absolute;left:-2px;right:-2px;bottom:.05em;height:.34em;background:#FCB326;z-index:0;transform-origin:left center"></span></span>.</p>
+          <div data-reveal="" style="display:flex;gap:14px;align-items:flex-start;background:var(--s-card);border:1px solid var(--ln);border-radius:16px;padding:18px" style-hover="border-color:var(--ln)">
+            <span aria-hidden="true" style="flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#00279C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">✓</span>
+            <div><h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:16px;margin:0;color:var(--t-ink)" data-en="Pick the institution, scan or search">Choisir l'établissement, scanner ou chercher</h3><p style="font-size:14px;line-height:1.6;color:var(--t-muted);margin:5px 0 0" data-en="The QR code opens the flow pre-filled — a poster becomes a payment point.">Le QR code ouvre le parcours prérempli — une affiche devient un point de paiement.</p></div>
+          </div>
+          <div data-reveal="" style="display:flex;gap:14px;align-items:flex-start;background:var(--s-card);border:1px solid var(--ln);border-radius:16px;padding:18px" style-hover="border-color:var(--ln)">
+            <span aria-hidden="true" style="flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#00279C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">✓</span>
+            <div><h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:16px;margin:0;color:var(--t-ink)" data-en="Identify the learner by student number">Identifier l'apprenant par matricule</h3><p style="font-size:14px;line-height:1.6;color:var(--t-muted);margin:5px 0 0" data-en="School fields (class, option) or higher-education fields (faculty, promotion).">Champs école (classe, option) ou supérieur (faculté, promotion).</p></div>
+          </div>
+          <div data-reveal="" style="display:flex;gap:14px;align-items:flex-start;background:var(--s-card);border:1px solid var(--ln);border-radius:16px;padding:18px" style-hover="border-color:var(--ln)">
+            <span aria-hidden="true" style="flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#00279C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">✓</span>
+            <div><h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:16px;margin:0;color:var(--t-ink)" data-en="Pay from any wallet">Payer depuis n'importe quel portefeuille</h3><p style="font-size:14px;line-height:1.6;color:var(--t-muted);margin:5px 0 0" data-en="The amount is recalculated server-side: a double tap never charges twice.">Le montant est recalculé côté serveur : un double clic ne débite jamais deux fois.</p></div>
+          </div>
+          <div data-reveal="" style="display:flex;gap:14px;align-items:flex-start;background:#00279C;border-radius:16px;padding:18px">
+            <span aria-hidden="true" style="flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#FCB326;color:#00279C;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800">✓</span>
+            <div><h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:16px;margin:0;color:#fff" data-en="Receipt for the parent, posted balance for you">Reçu pour le parent, solde imputé pour vous</h3><p style="font-size:14px;line-height:1.6;color:rgba(255,255,255,.82);margin:5px 0 0" data-en="Branded PDF, oldest fee item settled first, institution notified in the same second.">PDF de marque, poste de frais le plus ancien soldé d'abord, établissement notifié dans la même seconde.</p></div>
+          </div>
+          <a data-reveal="" href="#partenariat" style="display:inline-flex;align-items:center;gap:8px;background:#FCB326;color:#00279C;font-weight:700;font-size:15px;padding:14px 22px;border-radius:999px;justify-self:start;margin-top:6px" style-hover="background:#ffc44f;color:#00279C"><span data-en="Set up Tuition for my institution">Mettre Tuition en place chez moi</span> <span aria-hidden="true">›</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 05 · FAQ ============ -->
+  <section id="faq" style="background:var(--s-soft);padding:clamp(58px,7vw,100px) 22px">
+    <div id="grid-faq" style="max-width:1180px;margin:0 auto;display:grid;grid-template-columns:minmax(0,.6fr) minmax(0,1.4fr);gap:clamp(26px,4vw,52px);align-items:start">
+      <div data-reveal="">
+        <span style="display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t-brand);background:var(--s-card);border-radius:999px;padding:6px 12px" data-en="05 · FAQ">05 · FAQ</span>
+        <h2 style="font-family:Sora,sans-serif;font-weight:800;font-size:clamp(26px,3.2vw,40px);line-height:1.14;letter-spacing:-.028em;margin:16px 0 0;color:var(--t-ink);text-wrap:balance" data-en="Frequently asked questions.">Questions fréquentes.</h2>
+        <p style="font-size:15px;line-height:1.66;color:var(--t-muted);margin:12px 0 0;max-width:34ch" data-en="Something missing? Ask us directly — we answer within one business day.">Il manque quelque chose ? Demandez-nous — nous répondons sous un jour ouvré.</p>
+      </div>
+      <div style="display:grid;gap:10px">
+        <details data-reveal="" style="background:var(--s-card);border:1px solid var(--ln);border-radius:16px;padding:18px 20px">
+          <summary style="display:flex;justify-content:space-between;gap:16px;align-items:center;font-family:Sora,sans-serif;font-weight:700;font-size:15.5px;color:var(--t-ink)"><span data-en="Do we need to install an app?">Faut-il installer une application ?</span><span aria-hidden="true" style="color:var(--t-brand);font-size:19px;line-height:1">+</span></summary>
+          <p style="font-size:14.5px;line-height:1.65;color:var(--t-muted);margin:12px 0 0" data-en="No. abc pay is a web app: it opens in the browser, runs on entry-level phones and is built to stay light on a 3G connection.">Non. abc pay est une web app : elle s'ouvre dans le navigateur, tourne sur téléphone d'entrée de gamme et reste légère en 3G.</p>
+        </details>
+        <details data-reveal="" style="background:var(--s-card);border:1px solid var(--ln);border-radius:16px;padding:18px 20px">
+          <summary style="display:flex;justify-content:space-between;gap:16px;align-items:center;font-family:Sora,sans-serif;font-weight:700;font-size:15.5px;color:var(--t-ink)"><span data-en="Who pays the service fee?">Qui paie les frais de service ?</span><span aria-hidden="true" style="color:var(--t-brand);font-size:19px;line-height:1">+</span></summary>
+          <p style="font-size:14.5px;line-height:1.65;color:var(--t-muted);margin:12px 0 0" data-en="Never the parent. The payer settles the exact amount shown by the institution; the abc pay commission is taken on the institution side at settlement.">Jamais le parent. Le payeur règle le montant exact affiché par l'établissement ; la commission abc pay est prélevée côté établissement au reversement.</p>
+        </details>
+        <details data-reveal="" style="background:var(--s-card);border:1px solid var(--ln);border-radius:16px;padding:18px 20px">
+          <summary style="display:flex;justify-content:space-between;gap:16px;align-items:center;font-family:Sora,sans-serif;font-weight:700;font-size:15.5px;color:var(--t-ink)"><span data-en="Must we hand over our student database?">Devons-nous confier notre base d'apprenants ?</span><span aria-hidden="true" style="color:var(--t-brand);font-size:19px;line-height:1">+</span></summary>
+          <p style="font-size:14.5px;line-height:1.65;color:var(--t-muted);margin:12px 0 0" data-en="No. In payment-only mode the student number is the key and you reconcile in your own system; fee management is an opt-in.">Non. En mode paiement seul, le matricule sert de clé et vous réconciliez dans votre système ; la gestion des frais est une option.</p>
+        </details>
+        <details data-reveal="" style="background:var(--s-card);border:1px solid var(--ln);border-radius:16px;padding:18px 20px">
+          <summary style="display:flex;justify-content:space-between;gap:16px;align-items:center;font-family:Sora,sans-serif;font-weight:700;font-size:15.5px;color:var(--t-ink)"><span data-en="Which currency will be displayed?">Quelle devise sera affichée ?</span><span aria-hidden="true" style="color:var(--t-brand);font-size:19px;line-height:1">+</span></summary>
+          <p style="font-size:14.5px;line-height:1.65;color:var(--t-muted);margin:12px 0 0" data-en="Yours: USD or CDF, set per institution. Aggregates are converted to a base currency using a configurable rate, so a mixed portfolio still totals correctly.">La vôtre : USD ou CDF, réglée par établissement. Les agrégats sont convertis en devise de base via un taux configurable, pour que des paiements mixtes s'additionnent juste.</p>
+        </details>
+        <details data-reveal="" style="background:var(--s-card);border:1px solid var(--ln);border-radius:16px;padding:18px 20px">
+          <summary style="display:flex;justify-content:space-between;gap:16px;align-items:center;font-family:Sora,sans-serif;font-weight:700;font-size:15.5px;color:var(--t-ink)"><span data-en="How long does onboarding take?">Combien de temps prend l'onboarding ?</span><span aria-hidden="true" style="color:var(--t-brand);font-size:19px;line-height:1">+</span></summary>
+          <p style="font-size:14.5px;line-height:1.65;color:var(--t-muted);margin:12px 0 0" data-en="One working session: KYB documents, settlement account, fee schedule, management account and QR code. Your team is trained on the back office the same day.">Une séance de travail : documents KYB, compte de reversement, barème de frais, compte direction et QR code. Votre équipe est formée au back-office le même jour.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 11 · PARTENARIAT ============ -->
+  <section id="partenariat" style="background:var(--s-card);padding:clamp(48px,6vw,90px) 22px">
+    <div id="grid-partenariat" style="max-width:1180px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(30px,4.5vw,58px);align-items:start">
+      <div>
+        <span data-reveal="" style="display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--t-brand);background:var(--s-soft);border-radius:999px;padding:6px 12px" data-en="06 · Partnership">06 · Partenariat</span>
+        <h2 data-reveal="" style="font-family:Sora,sans-serif;font-weight:800;font-size:clamp(27px,3.5vw,44px);line-height:1.1;letter-spacing:-.03em;margin:16px 0 0;color:var(--t-ink);text-wrap:balance" data-en="Ready to move to digital payment?">Prêt à passer au paiement digital ?</h2>
+        <p data-reveal="" style="font-size:16px;line-height:1.68;color:var(--t-muted);margin:14px 0 0;max-width:46ch;text-wrap:pretty" data-en="Schools, universities, networks, operators, investors: tell us where you are and we come back with a concrete plan — not a brochure.">Écoles, universités, réseaux, opérateurs, investisseurs : dites-nous où vous en êtes, nous revenons avec un plan concret — pas une brochure.</p>
+        <div style="display:grid;gap:10px;margin-top:24px;max-width:420px">
+          <div data-reveal="" style="display:flex;gap:12px;align-items:center;border:1px solid var(--ln);border-radius:14px;padding:14px 16px">
+            <img src="assets/site/ic-envoyer.png" alt="" width="20" height="20" loading="lazy" style="width:20px;height:20px;display:block;flex-shrink:0"><div><div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--t-faint);font-weight:700" data-en="Phone / WhatsApp">Téléphone / WhatsApp</div><div style="font-weight:600;font-size:15px;color:var(--t-ink)">+243 98 08 44 444</div></div>
+          </div>
+          <div data-reveal="" style="display:flex;gap:12px;align-items:center;border:1px solid var(--ln);border-radius:14px;padding:14px 16px">
+            <img src="assets/site/ic-envoyer.png" alt="" width="20" height="20" loading="lazy" style="width:20px;height:20px;display:block"><div><div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--t-faint);font-weight:700" data-en="Email">E-mail</div><a href="mailto:hello@abcpayafrica.com" style="font-weight:600;font-size:15px;color:var(--t-ink)">hello@abcpayafrica.com</a></div>
+          </div>
+          <div data-reveal="" style="display:flex;gap:12px;align-items:center;border:1px solid var(--ln);border-radius:14px;padding:14px 16px">
+            <img src="assets/site/ic-marchand.png" alt="" width="20" height="20" loading="lazy" style="width:20px;height:20px;display:block;flex-shrink:0"><div><div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--t-faint);font-weight:700" data-en="Office">Bureau</div><div style="font-weight:600;font-size:15px;color:var(--t-ink)">Gombe, Kinshasa — RDC</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div data-reveal="" style="background:var(--s-soft);border:1px solid var(--ln);border-radius:24px;padding:clamp(22px,3vw,32px)">
+        <div data-if="sent" style="display:none">
+          <div style="padding:24px 6px;text-align:center">
+            <div aria-hidden="true" style="width:50px;height:50px;border-radius:50%;background:var(--s-ok-soft);color:var(--t-ok);display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:800;margin:0 auto">✓</div>
+            <h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:19px;margin:16px 0 0;color:var(--t-ink)" data-en="Request received">Demande reçue</h3>
+            <p style="font-size:14.5px;line-height:1.6;color:var(--t-muted);margin:9px 0 0" data-en="Our partnerships team gets back to you within one business day.">Notre équipe partenariats vous répond sous un jour ouvré.</p>
+          </div>
+        </div>
+        <div data-if="notSent">
+          <form data-act-submit="submit" style="display:grid;gap:13px">
+            <h3 style="font-family:Sora,sans-serif;font-weight:700;font-size:19px;margin:0;color:var(--t-ink)" data-en="Request a demo">Demander une démo</h3>
+            <div style="display:grid;gap:6px">
+              <label for="f-etab" style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t-muted)" data-en="Institution *">Établissement *</label>
+              <input id="f-etab" name="etablissement" required="" data-en-placeholder="Higher institute, Kinshasa" placeholder="Institut supérieur, Kinshasa" style="font-family:Inter,sans-serif;font-size:15px;padding:13px 14px;border:1px solid var(--ln);border-radius:12px;background:var(--s-card);color:var(--t-ink);width:100%">
+            </div>
+            <div id="f-row" style="display:grid;grid-template-columns:1fr 1fr;gap:13px">
+              <div style="display:grid;gap:6px">
+                <label for="f-nom" style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t-muted)" data-en="Contact *">Contact *</label>
+                <input id="f-nom" name="nom" required="" data-en-placeholder="Full name" placeholder="Nom complet" style="font-family:Inter,sans-serif;font-size:15px;padding:13px 14px;border:1px solid var(--ln);border-radius:12px;background:var(--s-card);color:var(--t-ink);width:100%">
+              </div>
+              <div style="display:grid;gap:6px">
+                <label for="f-tel" style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t-muted)" data-en="Phone / WhatsApp *">Téléphone / WhatsApp *</label>
+                <input id="f-tel" name="telephone" type="tel" required="" data-en-placeholder="+243 … (WhatsApp)" placeholder="+243 … (WhatsApp)" style="font-family:Inter,sans-serif;font-size:15px;padding:13px 14px;border:1px solid var(--ln);border-radius:12px;background:var(--s-card);color:var(--t-ink);width:100%">
+              </div>
+            </div>
+            <div style="display:grid;gap:6px">
+              <label for="f-mail" style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t-muted)" data-en="Email">Email</label>
+              <input id="f-mail" name="email" type="email" data-en-placeholder="name@institution.cd" placeholder="nom@etablissement.cd" style="font-family:Inter,sans-serif;font-size:15px;padding:13px 14px;border:1px solid var(--ln);border-radius:12px;background:var(--s-card);color:var(--t-ink);width:100%">
+            </div>
+            <div style="display:grid;gap:6px">
+              <label id="f-canal-label" style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t-muted)" data-en="How should we contact you?">Comment vous recontacter&nbsp;?</label>
+              <div id="f-canal-group" class="abc-seg" role="radiogroup" aria-labelledby="f-canal-label">
+                <button type="button" class="abc-seg__btn is-active" data-canal="whatsapp" role="radio" aria-checked="true">WhatsApp</button>
+                <button type="button" class="abc-seg__btn" data-canal="email" role="radio" aria-checked="false">Email</button>
+                <button type="button" class="abc-seg__btn" data-canal="appel" role="radio" aria-checked="false" data-en="Call">Appel</button>
+              </div>
+              <input id="f-canal" name="canal" type="hidden" value="whatsapp">
+            </div>
+            <div style="display:grid;gap:6px">
+              <label for="f-type" style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t-muted)" data-en="Profile">Profil</label>
+              <select id="f-type" name="profil" style="font-family:Inter,sans-serif;font-size:15px;padding:13px 14px;border:1px solid var(--ln);border-radius:12px;background:var(--s-card);color:var(--t-ink);width:100%">
+                <option data-en="School (primary / secondary)">École (primaire / secondaire)</option>
+                <option data-en="Higher education / university">Enseignement supérieur / université</option>
+                <option data-en="School network or group">Réseau ou groupe scolaire</option>
+                <option data-en="Mobile money operator">Opérateur mobile money</option>
+                <option data-en="Investor">Investisseur</option>
+                <option data-en="Other">Autre</option>
+              </select>
+            </div>
+            <div style="display:grid;gap:6px">
+              <label for="f-msg" style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--t-muted)" data-en="Message">Message</label>
+              <textarea id="f-msg" name="message" rows="3" data-en-placeholder="Number of learners, current collection method…" placeholder="Nombre d'apprenants, mode d'encaissement actuel…" style="font-family:Inter,sans-serif;font-size:15px;padding:13px 14px;border:1px solid var(--ln);border-radius:12px;background:var(--s-card);color:var(--t-ink);width:100%;resize:vertical"></textarea>
+            </div>
+            <button type="submit" style="font-family:Inter,sans-serif;border:0;cursor:pointer;background:#00279C;color:#fff;font-weight:700;font-size:15.5px;padding:15px;border-radius:999px" style-hover="background:#0B3FD6">
+              <span data-en="Send my request">Envoyer ma demande</span>
+            </button>
+            <p style="font-size:11.5px;color:var(--t-faint);margin:0;line-height:1.5" data-en="* Required fields. We usually reply within one business day.">* Champs obligatoires. Nous répondons généralement sous un jour ouvré.</p>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer style="background:#001A63;color:rgba(255,255,255,.72);padding:clamp(44px,5vw,68px) 22px 24px;overflow:hidden">
+    <div id="grid-footer" style="max-width:1300px;margin:0 auto;display:grid;grid-template-columns:1.6fr 1fr 1fr 1.2fr;gap:clamp(22px,3vw,38px)">
+      <div>
+        <img src="assets/site/logo-abcpay-white.png" alt="abc pay" style="height:88px;width:auto;display:block;border-radius:8px">
+        <p style="font-family:Sora,sans-serif;font-weight:600;color:#FCB326;font-size:13px;margin:12px 0 0;letter-spacing:.03em">The Connected Money</p>
+        <p style="font-size:13.5px;line-height:1.6;margin:9px 0 0;max-width:30ch" data-en="Payment platform for the DRC: send, receive, pay, collect. Tuition is our product for school and academic fees.">Plateforme de paiement pour la RDC : envoyer, recevoir, payer, encaisser. Tuition est notre produit pour les frais scolaires et académiques.</p>
+        <div style="display:flex;gap:8px;margin-top:16px">
+          <a href="#partenariat" aria-label="LinkedIn" style="width:38px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;color:#fff" style-hover="background:#FCB326;color:#00279C;border-color:#FCB326">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9h4v12H3V9zm7 0h3.8v1.7h.05c.53-.95 1.83-1.95 3.77-1.95 4.03 0 4.78 2.5 4.78 5.75V21h-4v-5.6c0-1.35-.02-3.1-1.9-3.1-1.9 0-2.2 1.45-2.2 2.99V21h-4V9z"></path></svg>
+          </a>
+          <a href="#partenariat" aria-label="X" style="width:38px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;color:#fff" style-hover="background:#FCB326;color:#00279C;border-color:#FCB326">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M17.6 3h3.2l-7 8L22 21h-6.2l-4.4-5.9L5.9 21H2.7l7.3-8.3L2 3h6.3l4.1 5.5L17.6 3zm-1.1 16h1.8L7.4 4.9H5.5L16.5 19z"></path></svg>
+          </a>
+          <a href="#partenariat" aria-label="Facebook" style="width:38px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;color:#fff" style-hover="background:#FCB326;color:#00279C;border-color:#FCB326">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M13.5 21v-8h2.7l.4-3.1h-3.1V7.9c0-.9.25-1.5 1.55-1.5H16.7V3.6c-.3-.04-1.3-.13-2.45-.13-2.45 0-4.13 1.5-4.13 4.24V9.9H7.4V13h2.72v8h3.38z"></path></svg>
+          </a>
+          <a href="https://wa.me/243980844444" aria-label="WhatsApp" style="width:38px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;color:#fff" style-hover="background:#FCB326;color:#00279C;border-color:#FCB326">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12.04 2C6.6 2 2.2 6.4 2.2 11.84c0 1.94.53 3.75 1.46 5.3L2 22l4.98-1.6a9.8 9.8 0 0 0 5.06 1.4c5.43 0 9.84-4.4 9.84-9.84C21.88 6.4 17.47 2 12.04 2zm0 17.86c-1.65 0-3.19-.49-4.48-1.33l-.32-.2-2.95.95.96-2.87-.21-.33a7.96 7.96 0 0 1-1.24-4.24c0-4.42 3.6-8.02 8.03-8.02 4.42 0 8.02 3.6 8.02 8.02 0 4.43-3.6 8.02-7.81 8.02zm4.5-5.9c-.24-.12-1.44-.71-1.66-.79-.22-.08-.38-.12-.55.12-.16.24-.63.79-.77.95-.14.16-.28.18-.52.06a6.5 6.5 0 0 1-1.92-1.19 7.3 7.3 0 0 1-1.32-1.65c-.14-.24-.02-.37.1-.49.1-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.55-1.32-.75-1.8-.2-.47-.4-.4-.55-.41h-.47c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2 0 1.18.86 2.32.98 2.48.12.16 1.7 2.7 4.12 3.68 2.42.98 2.42.65 2.86.61.44-.04 1.44-.59 1.64-1.16.2-.57.2-1.06.14-1.16-.06-.1-.22-.16-.46-.28z"></path></svg>
+          </a>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:Sora,sans-serif;font-weight:700;color:#fff;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase" data-en="Product">Produit</div>
+        <div style="display:grid;gap:9px;margin-top:14px;font-size:14px">
+          <a href="#tuition" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326">Tuition</a>
+          <a href="#canaux" data-en="Payment channels" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326">Canaux de paiement</a>
+          </div>
+      </div>
+      <div>
+        <div style="font-family:Sora,sans-serif;font-weight:700;color:#fff;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase" data-en="Institutions">Établissements</div>
+        <div style="display:grid;gap:9px;margin-top:14px;font-size:14px">
+          <a href="#partenariat" data-en="Set up Tuition" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326">Mettre Tuition en place</a>
+          <a href="#faq" data-en="Onboarding &amp; FAQ" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326">Onboarding &amp; FAQ</a>
+          <a href="#partenariat" data-en="Merchants &amp; partners" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326">Marchands / Partenaires</a>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:Sora,sans-serif;font-weight:700;color:#fff;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase" data-en="Contact">Contact</div>
+        <div style="display:grid;gap:9px;margin-top:14px;font-size:14px">
+          <a href="mailto:hello@abcpayafrica.com" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326">hello@abcpayafrica.com</a>
+          <a href="tel:+243980844444" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326">+243 98 08 44 444</a>
+          <span style="color:rgba(255,255,255,.55)" data-en="Kinshasa, DR Congo">Kinshasa, RD Congo</span>
+          <a href="#partenariat" data-en="Become a partner" style="color:#FCB326;font-weight:600" style-hover="color:#ffc44f">Devenir partenaire ›</a>
+        </div>
+      </div>
+    </div>
+
+    <div style="max-width:1300px;margin:28px auto 0;padding-top:18px;border-top:1px solid rgba(255,255,255,.16);display:grid;gap:12px;font-size:12.5px;color:rgba(255,255,255,.55)">
+      <nav style="display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center">
+        <a href="#canaux" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326" data-en="How it works">Comment ça marche</a>
+        <a href="#faq" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326">FAQ</a>
+        <a href="#partenariat" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326" data-en="Terms of use">Conditions d'utilisation</a>
+        <a href="#partenariat" style="color:rgba(255,255,255,.72)" style-hover="color:#FCB326" data-en="Privacy">Confidentialité</a>
+      </nav>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline;justify-content:space-between">
+        <span>© 2026 abc pay — <span data-en="All rights reserved.">Tous droits réservés.</span></span>
+        <span style="max-width:60ch" data-en="abc pay relies on payment aggregation partners authorised by the BCC.">abc pay s'appuie sur des partenaires d'agrégation de paiement autorisés par la BCC.</span>
+      </div>
+    </div>
+  </footer>
+</div>
+<script>
+"use strict";
+var __ABCLanding = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/components/bienvenue/landing-logic.ts
+  var landing_logic_exports = {};
+  __export(landing_logic_exports, {
+    initLanding: () => initLanding
+  });
+  var $ = (root, sel) => Array.from(root.querySelectorAll(sel));
+  var API_BASE = "".replace(/\/$/, "");
+  var HttpError = class extends Error {
+    constructor(status) {
+      super("http " + status);
+      this.status = status;
+    }
+  };
+  async function apiPostJson(path, body) {
+    const res = await fetch(API_BASE + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new HttpError(res.status);
+    return res.json();
+  }
+  async function apiGetJson(path) {
+    const res = await fetch(API_BASE + path);
+    if (!res.ok) throw new Error("http " + res.status);
+    return res.json();
+  }
+  function initLanding(root) {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const factor = reduceMotion ? 0 : 1;
+    const reduce = reduceMotion || factor === 0;
+    let lang = "fr";
+    let sector = 0;
+    let esp = null;
+    let step = 0;
+    let chip = 0;
+    let ioObs = null;
+    let stepTimer = null;
+    let chipTimer = null;
+    let resumeTimer = null;
+    const cleanups = [];
+    function setLang(next) {
+      if (next === lang) return;
+      $(root, "[data-en]").forEach((el) => {
+        if (!el.dataset.fr) el.dataset.fr = el.innerHTML;
+        el.innerHTML = next === "en" ? el.dataset.en ?? "" : el.dataset.fr ?? "";
+      });
+      $(root, "[data-en-placeholder]").forEach((el) => {
+        if (!el.dataset.frPlaceholder) el.dataset.frPlaceholder = el.getAttribute("placeholder") ?? "";
+        el.setAttribute(
+          "placeholder",
+          next === "en" ? el.dataset.enPlaceholder ?? "" : el.dataset.frPlaceholder ?? ""
+        );
+      });
+      const fr = root.querySelector("#lang-fr");
+      const en = root.querySelector("#lang-en");
+      const base = "border:0;cursor:pointer;font-family:var(--font-inter),sans-serif;font-size:11.5px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:999px;";
+      const on = "background:#FCB326;color:#00279C";
+      const off = "background:transparent;color:rgba(255,255,255,.7)";
+      if (fr) fr.setAttribute("style", base + (next === "fr" ? on : off));
+      if (en) en.setAttribute("style", base + (next === "en" ? on : off));
+      document.documentElement.lang = next;
+      lang = next;
+    }
+    function moveSector(dir) {
+      const cards = $(root, "#sectortrack [data-sector]");
+      if (!cards.length) return;
+      const n = cards.length;
+      const perView = window.innerWidth < 700 ? 1 : window.innerWidth < 1080 ? 2 : 3;
+      sector = (sector + dir + n) % n;
+      cards.forEach((c, i) => {
+        const rel = (i - sector + n) % n;
+        const show = rel < perView;
+        c.style.display = show ? "flex" : "none";
+        c.style.order = String(rel);
+        if (show) {
+          c.style.animation = "none";
+          void c.offsetWidth;
+          c.style.animation = "fadeUp .45s both";
+        }
+      });
+    }
+    function setEspace(idx) {
+      esp = idx;
+      const wide = window.innerWidth >= 980;
+      $(root, "#grid-espaces [data-espace]").forEach((c, i) => {
+        const on = i === idx;
+        c.style.background = on ? "#00279C" : "var(--s-soft)";
+        c.style.boxShadow = on && wide ? "0 34px 70px -44px rgba(11,26,68,.8)" : "none";
+        c.style.zIndex = on ? "2" : "1";
+        c.style.transform = "none";
+        c.style.borderRadius = !wide ? "14px" : "0";
+        c.style.marginBottom = !wide ? "10px" : "0";
+        c.setAttribute("aria-pressed", on ? "true" : "false");
+        const q = (s) => c.querySelector(s);
+        const icon = q("[data-esp-icon]");
+        const lab = q("[data-esp-label]");
+        const tit = q("[data-esp-title]");
+        const txt = q("[data-esp-text]");
+        const cta = q("[data-esp-cta]");
+        if (icon) {
+          icon.style.background = on ? "#FCB326" : "var(--s-card)";
+          icon.style.color = "#00279C";
+        }
+        if (lab) lab.style.color = on ? "#FCB326" : "var(--t-faint)";
+        if (tit) tit.style.color = on ? "#fff" : "var(--t-ink)";
+        if (txt) txt.style.color = on ? "rgba(255,255,255,.84)" : "var(--t-muted)";
+        if (cta) cta.style.display = on ? "inline-flex" : "none";
+      });
+    }
+    function setStepUI(idx) {
+      step = idx;
+      $(root, "#hero-stage [data-heroshot]").forEach((im, i) => {
+        const on = i === idx;
+        im.style.opacity = on ? "1" : "0";
+        im.style.transform = on ? "scale(1) translateY(0)" : "scale(1.05) translateY(12px)";
+        im.style.zIndex = on ? "2" : "1";
+      });
+      $(root, "#steprail [data-step]").forEach((s, i) => {
+        const on = i === idx;
+        s.style.background = on ? "#00279C" : "var(--s-card)";
+        s.style.color = on ? "#fff" : "var(--t-faint)";
+        s.style.borderColor = on ? "#00279C" : "var(--ln)";
+        s.style.transform = on ? "scale(1.14)" : "none";
+        s.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      $(root, "#steprail [data-steprailfill]").forEach((f, i) => {
+        f.style.transform = i < idx ? "scaleY(1)" : "scaleY(0)";
+      });
+      $(root, "#stepcap [data-stepcap]").forEach((c, i) => {
+        c.style.display = i === idx ? "inline" : "none";
+      });
+      const ring = "0 0 0 2px #FCB326";
+      const tx = root.querySelector("#tx-list");
+      if (tx) tx.style.boxShadow = idx === 1 ? ring : "none";
+      ["fc-recu", "fc-alerte"].forEach((id) => {
+        const el = root.querySelector("#" + id);
+        if (!el) return;
+        el.style.transition = "box-shadow .4s ease";
+        el.style.boxShadow = idx === 2 ? ring + ", 0 24px 48px -30px rgba(11,26,68,.5)" : "";
+      });
+    }
+    function pickStep(i) {
+      if (stepTimer) {
+        clearInterval(stepTimer);
+        stepTimer = null;
+      }
+      setStepUI(i);
+      if (resumeTimer) clearTimeout(resumeTimer);
+      resumeTimer = setTimeout(() => {
+        if (reduce) return;
+        stepTimer = setInterval(() => setStepUI((step + 1) % 3), 5200);
+      }, 18e3);
+    }
+    const acts = {
+      setFr: () => setLang("fr"),
+      setEn: () => setLang("en"),
+      prevSector: () => moveSector(-1),
+      nextSector: () => moveSector(1),
+      pickEsp0: () => setEspace(0),
+      pickEsp1: () => setEspace(1),
+      pickEsp2: () => setEspace(2),
+      goStep1: () => pickStep(0),
+      goStep2: () => pickStep(1),
+      goStep3: () => pickStep(2),
+      toggleMenu: () => {
+        const menu = root.querySelector("#mobilemenu");
+        if (menu) menu.style.display = menu.style.display === "block" ? "none" : "block";
+      },
+      toggleTheme: () => {
+        const next = effectiveDark() ? "light" : "dark";
+        try {
+          localStorage.setItem(THEME_KEY, next);
+        } catch {
+        }
+        applyTheme(next);
+      }
+    };
+    function bind(el, ev, fn) {
+      el.addEventListener(ev, fn);
+      cleanups.push(() => el.removeEventListener(ev, fn));
+    }
+    $(root, "[data-act]").forEach((el) => {
+      const fn = acts[el.getAttribute("data-act") ?? ""];
+      if (fn) bind(el, "click", fn);
+    });
+    const canalGroup = root.querySelector("#f-canal-group");
+    const canalInput = root.querySelector("#f-canal");
+    if (canalGroup && canalInput) {
+      const canalBtns = Array.from(canalGroup.querySelectorAll("button[data-canal]"));
+      const mailInput = root.querySelector("#f-mail");
+      const setCanal = (active) => {
+        canalBtns.forEach((b) => {
+          const on = b === active;
+          b.setAttribute("aria-checked", on ? "true" : "false");
+          b.classList.toggle("is-active", on);
+        });
+        canalInput.value = active.getAttribute("data-canal") ?? "whatsapp";
+        if (mailInput) mailInput.required = canalInput.value === "email";
+      };
+      canalBtns.forEach((b) => bind(b, "click", () => setCanal(b)));
+    }
+    $(root, "[data-act-submit]").forEach((el) => {
+      const kind = el.getAttribute("data-act-submit");
+      if (kind === "submit") {
+        bind(el, "submit", async (e) => {
+          e.preventDefault();
+          const form = el;
+          const val = (id) => (root.querySelector("#" + id)?.value ?? "").trim();
+          const revealSent = () => {
+            const sent = root.querySelector('[data-if="sent"]');
+            const notSent = root.querySelector('[data-if="notSent"]');
+            if (notSent) notSent.style.display = "none";
+            if (sent) sent.style.display = "block";
+          };
+          const showError = (msg) => {
+            let err = form.querySelector(".abc-form-error");
+            if (!err) {
+              err = document.createElement("p");
+              err.className = "abc-form-error";
+              err.setAttribute("role", "alert");
+              err.style.cssText = "color:#E5484D;font-size:13px;font-weight:600;margin:0;line-height:1.5";
+              form.appendChild(err);
+            }
+            err.textContent = msg;
+            err.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          };
+          const btn = form.querySelector('button[type="submit"]');
+          const btnLabel = btn?.querySelector("span");
+          const original = btnLabel?.textContent ?? "";
+          if (btn) btn.disabled = true;
+          if (btnLabel) btnLabel.textContent = "Envoi\u2026";
+          form.querySelector(".abc-form-error")?.remove();
+          try {
+            await apiPostJson("/api/v1/leads", {
+              establishment_name: val("f-etab"),
+              contact_name: val("f-nom"),
+              phone: val("f-tel"),
+              email: val("f-mail") || null,
+              contact_channel: val("f-canal") || "whatsapp",
+              profile: val("f-type") || null,
+              message: val("f-msg") || null
+            });
+            revealSent();
+          } catch (err) {
+            const status = err instanceof HttpError ? err.status : 0;
+            if (btn) btn.disabled = false;
+            if (btnLabel) btnLabel.textContent = original;
+            if (status === 429) {
+              showError("Trop de tentatives d'envoi. Patiente une minute puis r\xE9essaie.");
+            } else if (status === 422) {
+              showError("V\xE9rifie les champs : \xE9tablissement, contact et t\xE9l\xE9phone sont requis (email valide s'il est renseign\xE9).");
+            } else {
+              showError("Envoi impossible pour le moment. R\xE9essaie, ou \xE9cris-nous \xE0 hello@abcpayafrica.com.");
+            }
+          }
+        });
+      } else if (kind === "subscribe") {
+        bind(el, "submit", (e) => {
+          e.preventDefault();
+          const ok = root.querySelector("#newsok");
+          if (ok) ok.style.display = "block";
+          e.target.reset();
+        });
+      }
+    });
+    const pageEl = root.querySelector("#page") ?? root;
+    const THEME_KEY = "abcpay_theme";
+    const systemDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const effectiveDark = () => {
+      const t = pageEl.getAttribute("data-theme");
+      return t ? t === "dark" : systemDark();
+    };
+    const applyTheme = (mode) => {
+      if (mode) pageEl.setAttribute("data-theme", mode);
+      else pageEl.removeAttribute("data-theme");
+      const btn = root.querySelector("#abc-theme-toggle");
+      if (btn) {
+        const dark = effectiveDark();
+        btn.setAttribute("aria-label", dark ? "Passer en mode clair" : "Passer en mode sombre");
+        btn.setAttribute("aria-pressed", dark ? "true" : "false");
+      }
+    };
+    let storedTheme = null;
+    try {
+      storedTheme = localStorage.getItem(THEME_KEY);
+    } catch {
+    }
+    applyTheme(storedTheme === "dark" || storedTheme === "light" ? storedTheme : null);
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onScheme = () => {
+      if (!pageEl.getAttribute("data-theme")) applyTheme(null);
+    };
+    mq.addEventListener("change", onScheme);
+    cleanups.push(() => mq.removeEventListener("change", onScheme));
+    const nav = root.querySelector("#nav");
+    const onNav = () => {
+      if (nav) nav.style.boxShadow = window.scrollY > 30 ? "0 12px 30px -22px rgba(11,26,68,.5)" : "none";
+    };
+    const items = $(root, "[data-reveal]");
+    const bars = $(root, "[data-bar]");
+    const growbars = $(root, "[data-growbar]");
+    if (!reduce && "IntersectionObserver" in window) {
+      items.forEach((el) => {
+        if (el.getBoundingClientRect().top < window.innerHeight * 0.92) return;
+        el.style.opacity = "0";
+        el.style.transform = "translateY(20px)";
+        el.style.transition = "opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1)";
+      });
+      bars.forEach((b) => {
+        b.style.transform = "scaleX(0)";
+      });
+      growbars.forEach((b, i) => {
+        b.style.transform = "scaleY(0)";
+        b.style.transition = "transform .8s cubic-bezier(.16,1,.3,1) " + (0.5 + i * 0.08) + "s";
+      });
+      requestAnimationFrame(
+        () => growbars.forEach((b) => {
+          b.style.transform = "scaleY(1)";
+        })
+      );
+      const io = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((en, i) => {
+            if (!en.isIntersecting) return;
+            const el = en.target;
+            if (el.hasAttribute("data-bar")) {
+              el.style.transition = "transform .7s cubic-bezier(.16,1,.3,1) .15s";
+              el.style.transform = "scaleX(1)";
+            } else {
+              el.style.transitionDelay = i * 60 + "ms";
+              el.style.opacity = "1";
+              el.style.transform = "none";
+            }
+            io.unobserve(el);
+          });
+        },
+        { rootMargin: "0px 0px -10% 0px", threshold: 0.08 }
+      );
+      items.concat(bars).forEach((el) => io.observe(el));
+      ioObs = io;
+      setTimeout(() => {
+        items.forEach((el) => {
+          el.style.opacity = "1";
+          el.style.transform = "none";
+        });
+        bars.forEach((b) => {
+          b.style.transform = "scaleX(1)";
+        });
+      }, 7e3);
+    }
+    const chips = $(root, "#canaux-chips [data-chip]");
+    const paths = $(root, "#canaux-svg path");
+    const setChip = (k) => {
+      chips.forEach((c, i) => {
+        const on = i === k;
+        c.style.background = on ? "#00279C" : "var(--s-card)";
+        c.style.borderColor = on ? "#00279C" : "var(--ln)";
+        c.style.color = on ? "#fff" : "var(--t-ink)";
+        const dot = c.querySelector("[data-cdot]");
+        if (dot) dot.style.background = on ? "#FCB326" : dot.dataset.color ?? "";
+      });
+      paths.forEach((pa, i) => {
+        pa.style.stroke = i === k ? "#00279C" : "#DDE4F5";
+        pa.style.strokeWidth = i === k ? "2" : "1";
+      });
+    };
+    if (chips.length) {
+      setChip(0);
+      chips.forEach((c, i) => {
+        const pick = () => {
+          chip = i;
+          setChip(i);
+        };
+        bind(c, "mouseenter", pick);
+        bind(c, "click", pick);
+        bind(c, "focus", pick);
+      });
+      if (!reduce)
+        chipTimer = setInterval(() => {
+          chip = (chip + 1) % chips.length;
+          setChip(chip);
+        }, 1900);
+    }
+    setEspace(1);
+    $(root, "#grid-espaces [data-espace]").forEach((c, i) => {
+      bind(c, "keydown", (e) => {
+        const ke = e;
+        if (ke.key === "Enter" || ke.key === " ") {
+          e.preventDefault();
+          setEspace(i);
+        }
+      });
+    });
+    setStepUI(0);
+    if (!reduce) stepTimer = setInterval(() => setStepUI((step + 1) % 3), 5200);
+    const px = $(root, "[data-parallax]").map((el) => ({
+      el,
+      k: (parseFloat(el.dataset.parallax ?? "0") || 0) * factor
+    }));
+    let raf = 0;
+    const tick = () => {
+      raf = 0;
+      const vh = window.innerHeight;
+      px.forEach((p) => {
+        const r = p.el.getBoundingClientRect();
+        if (r.bottom < -200 || r.top > vh + 200) return;
+        const off = (r.top + r.height / 2 - vh / 2) * p.k * -1;
+        p.el.style.setProperty("translate", "0 " + off.toFixed(1) + "px");
+      });
+    };
+    const onScroll = () => {
+      onNav();
+      if (!raf && !reduce) raf = requestAnimationFrame(tick);
+    };
+    onNav();
+    if (!reduce) tick();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    cleanups.push(() => window.removeEventListener("scroll", onScroll));
+    const cols = {};
+    const gridIds = [
+      "grid-hero",
+      "grid-atouts",
+      "grid-atouts-cards",
+      "grid-probleme",
+      "grid-canaux",
+      "grid-tuition",
+      "grid-tuition-head",
+      "grid-capacites",
+      "grid-apropos",
+      "grid-espaces",
+      "grid-securite",
+      "grid-temoin",
+      "grid-quotes",
+      "grid-faq",
+      "grid-partenariat",
+      "grid-footer",
+      "sectortrack",
+      "mosaic",
+      "hero-kpis"
+    ];
+    gridIds.forEach((id) => {
+      const g = root.querySelector("#" + id);
+      if (g) cols[id] = g.style.gridTemplateColumns;
+    });
+    const setCols = (id, v) => {
+      const g = root.querySelector("#" + id);
+      if (g) g.style.gridTemplateColumns = v || cols[id];
+    };
+    const applyResponsive = () => { moveSector(0); setEspace(esp == null ? 1 : esp); };
+    applyResponsive();
+    window.addEventListener("resize", applyResponsive, { passive: true });
+    cleanups.push(() => window.removeEventListener("resize", applyResponsive));
+    if ("ResizeObserver" in window) {
+      const ro = new ResizeObserver(() => applyResponsive());
+      ro.observe(document.documentElement);
+      cleanups.push(() => ro.disconnect());
+    }
+    const onOrient = () => applyResponsive();
+    window.addEventListener("orientationchange", onOrient);
+    cleanups.push(() => window.removeEventListener("orientationchange", onOrient));
+    const menuEl = root.querySelector("#mobilemenu");
+    if (menuEl && !menuEl.querySelector("[data-abc-auth]")) {
+      for (const [label, href] of []) {
+        const a = document.createElement("a");
+        a.textContent = label;
+        a.href = href;
+        a.setAttribute("data-abc-auth", "");
+        a.style.cssText = "display:block;padding:10px 0;font-weight:700;color:var(--t-brand)";
+        menuEl.appendChild(a);
+      }
+    }
+    const NAV_MAP = [];
+    const normLabel = (s) => s.replace(/[›»]/g, "").replace(/\s+/g, " ").trim();
+    $(root, "#page a, #page button").forEach((el) => {
+      if (el.hasAttribute("data-act") || el.hasAttribute("data-act-submit")) return;
+      const label = normLabel(el.textContent || "");
+      if (!label || label.length > 40) return;
+      for (const [re, href] of NAV_MAP) {
+        if (re.test(label)) {
+          el.style.cursor = "pointer";
+          bind(el, "click", (e) => {
+            e.preventDefault();
+            window.location.assign(href);
+          });
+          break;
+        }
+      }
+    });
+    const about = root.querySelector("#apropos");
+    if (about && !root.querySelector("#abc-live-stats")) {
+      const strip = document.createElement("div");
+      strip.id = "abc-live-stats";
+      strip.style.cssText = "grid-column:1/-1;display:flex;flex-wrap:wrap;gap:30px;margin-top:26px";
+      strip.innerHTML = [
+        ["establishments", "\xE9tablissements"],
+        ["payments", "paiements trait\xE9s"],
+        ["volume", "volume encaiss\xE9"]
+      ].map(
+        ([k, lab]) => `<div><div data-stat="${k}" style="font-family:var(--font-sora);font-weight:800;font-size:26px;line-height:1;color:var(--t-ink)">\u2014</div><div style="font-size:12.5px;color:var(--t-muted);margin-top:5px">${lab}</div></div>`
+      ).join("");
+      (about.querySelector("#grid-apropos") ?? about).appendChild(strip);
+    }
+    apiGetJson("/api/v1/stats/public").then((j) => {
+      const d = j?.data;
+      if (!d) return;
+      const nf = new Intl.NumberFormat("fr-FR");
+      const setStat = (k, v) => {
+        const el = root.querySelector(`[data-stat="${k}"]`);
+        if (el) el.textContent = v;
+      };
+      if (typeof d.establishments === "number") setStat("establishments", nf.format(d.establishments));
+      if (typeof d.payments === "number") setStat("payments", nf.format(d.payments));
+      if (typeof d.volume === "number") {
+        const sym = d.currency === "CDF" ? "FC" : "$";
+        setStat("volume", `${nf.format(d.volume)} ${sym}`);
+      }
+    }).catch(() => {
+    });
+    const quotesGrid = root.querySelector("#grid-quotes");
+    if (quotesGrid) {
+      const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+      apiGetJson("/api/v1/reviews/public").then((j) => {
+        const list = j?.data;
+        if (!list || list.length === 0) return;
+        quotesGrid.innerHTML = list.map((r) => {
+          const n = Math.max(1, Math.min(5, r.rating));
+          const stars = "\u2605".repeat(n) + "\u2606".repeat(5 - n);
+          const sub = [r.author_role, r.context].filter(Boolean).map((x) => esc(String(x))).join(" \xB7 ");
+          return `<div style="background:var(--s-page);border:1px solid var(--ln);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:10px"><div style="color:#FCB326;font-size:14px;letter-spacing:1px">${stars}</div><p style="margin:0;font-size:14.5px;line-height:1.55;color:var(--t-ink)">\xAB ${esc(r.message)} \xBB</p><div><div style="font-size:12.5px;font-weight:700;color:var(--t-ink)">${esc(r.author_name)}</div>` + (sub ? `<div style="font-size:11.5px;color:var(--t-muted)">${sub}</div>` : "") + `</div></div>`;
+        }).join("");
+      }).catch(() => {
+      });
+    }
+    const faqCol = root.querySelector("#grid-faq > div:last-child");
+    if (faqCol) {
+      const escFaq = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+      apiGetJson("/api/v1/faqs/public").then((j) => {
+        const list = j?.data;
+        if (!list || list.length === 0) return;
+        faqCol.innerHTML = list.map(
+          (f) => `<details style="background:var(--s-card);border:1px solid var(--ln);border-radius:16px;padding:18px 20px"><summary style="display:flex;justify-content:space-between;gap:16px;align-items:center;font-family:Sora,sans-serif;font-weight:700;font-size:15.5px;color:var(--t-ink)"><span>${escFaq(f.question)}</span><span aria-hidden="true" style="color:var(--t-brand);font-size:19px;line-height:1">+</span></summary><p style="font-size:14.5px;line-height:1.65;color:var(--t-muted);margin:12px 0 0">${escFaq(f.answer)}</p></details>`
+        ).join("");
+        faqCol.querySelectorAll("details").forEach(
+          (d) => bind(d, "toggle", () => {
+            const mark = d.querySelector("summary span[aria-hidden]");
+            if (mark) mark.textContent = d.open ? "\u2013" : "+";
+          })
+        );
+      }).catch(() => {
+      });
+    }
+    $(root, "#mobilemenu a").forEach(
+      (a) => bind(a, "click", () => {
+        const m = root.querySelector("#mobilemenu");
+        if (m) m.style.display = "none";
+      })
+    );
+    $(root, "details").forEach(
+      (d) => bind(d, "toggle", () => {
+        const mark = d.querySelector("summary span[aria-hidden]");
+        if (mark) mark.textContent = d.open ? "\u2013" : "+";
+      })
+    );
+    return () => {
+      if (ioObs) ioObs.disconnect();
+      if (stepTimer) clearInterval(stepTimer);
+      if (chipTimer) clearInterval(chipTimer);
+      if (resumeTimer) clearTimeout(resumeTimer);
+      document.body.style.overflow = "";
+      cleanups.forEach((fn) => fn());
+    };
+  }
+  return __toCommonJS(landing_logic_exports);
+})();
+
+try{ (window.__ABCLanding&&__ABCLanding.initLanding)&&__ABCLanding.initLanding(document.getElementById('page')); }catch(e){ console.error(e); }
+
+</script>
+
+<script>
+/* Champ de particules du hero — d'après le « spipa » d'Alex Andrix (alexandrix.com),
+   réécrit sans lodash, borné au <section id="hero"> et coupé si l'utilisateur
+   demande moins d'animation. */
+(function () {
+  "use strict";
+  var canvas = document.getElementById("herofield");
+  var hero = document.getElementById("hero");
+  if (!canvas || !hero) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { canvas.style.display = "none"; return; }
+
+  var ctx = canvas.getContext("2d");
+  var W = 0, H = 0, xC = 0, yC = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var GRID = 8, STEPS = Math.floor(1000 / GRID), grid = [], gridMax = 0;
+  var particles = [], step = 0;
+  var LIFESPAN = 900, MAX_POP = 260, BIRTH_FREQ = 1;
+
+  for (var xx = -500, i = 0; xx < 500; xx += GRID) {
+    for (var yy = -500; yy < 500; yy += GRID) {
+      var f = 200;
+      grid.push({
+        x: xx, y: yy, busyAge: 0, spotIndex: i, field: f,
+        isEdge: xx === -500 || xx === -500 + GRID * (STEPS - 1) || yy === -500 || yy === -500 + GRID * (STEPS - 1)
+      });
+      i++;
+    }
+  }
+  gridMax = i;
+
+  function resize() {
+    var r = hero.getBoundingClientRect();
+    W = Math.max(1, Math.round(r.width)); H = Math.max(1, Math.round(r.height));
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    xC = W / 2; yC = H / 2;
+  }
+  resize();
+  window.addEventListener("resize", resize, { passive: true });
+
+  function toCanvas(x, y) {
+    var zoom = Math.max(W / 1000, H / 1000) * 1.08;
+    return { x: xC + x * zoom, y: yC + y * zoom };
+  }
+  function birth() {
+    var idx = Math.floor(Math.random() * gridMax), g = grid[idx];
+    particles.push({
+      hue: 218 + Math.floor(18 * Math.random()),
+      sat: 88, lum: 34 + Math.floor(26 * Math.random()),
+      x: g.x, y: g.y, xLast: g.x, yLast: g.y, xSpeed: 0, ySpeed: 0,
+      age: 0, ageSinceStuck: 0, oldIndex: idx, gridSpotIndex: idx, dead: false
+    });
+  }
+  function move() {
+    for (var n = 0; n < particles.length; n++) {
+      var p = particles[n];
+      p.xLast = p.x; p.yLast = p.y;
+      var index = p.gridSpotIndex, spot = grid[index];
+      if (Math.random() < 0.5) {
+        if (!spot.isEdge) {
+          var cands = [grid[index - 1], grid[index + 1], grid[index - STEPS], grid[index + STEPS]];
+          var best = null, bestVal = -Infinity;
+          for (var c = 0; c < cands.length; c++) {
+            var cd = cands[c]; if (!cd) continue;
+            var v = cd.field + 30 * Math.random();
+            if (v > bestVal) { bestVal = v; best = cd; }
+          }
+          if (best && (best.busyAge === 0 || best.busyAge > 15)) {
+            p.ageSinceStuck = 0; p.oldIndex = index; p.gridSpotIndex = best.spotIndex;
+            spot = best; spot.busyAge = 1;
+          } else p.ageSinceStuck++;
+        } else p.ageSinceStuck++;
+        if (p.ageSinceStuck === 10) p.dead = true;
+      }
+      var k = 8, visc = 0.4, dx = p.x - spot.x, dy = p.y - spot.y;
+      p.xSpeed = (p.xSpeed - k * dx) * visc;
+      p.ySpeed = (p.ySpeed - k * dy) * visc;
+      p.x += 0.1 * p.xSpeed; p.y += 0.1 * p.ySpeed;
+      if (++p.age > LIFESPAN) p.dead = true;
+    }
+    if (particles.some(function (p) { return p.dead; }))
+      particles = particles.filter(function (p) { return !p.dead; });
+  }
+  function draw() {
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "rgba(0,0,0,.055)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "source-over";
+    for (var n = 0; n < particles.length; n++) {
+      var p = particles[n];
+      var col = "hsla(" + p.hue + "," + p.sat + "%," + p.lum + "%,1)";
+      var last = toCanvas(p.xLast, p.yLast), now = toCanvas(p.x, p.y);
+      var at = toCanvas(grid[p.gridSpotIndex].x, grid[p.gridSpotIndex].y);
+      var old = toCanvas(grid[p.oldIndex].x, grid[p.oldIndex].y);
+      ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(now.x, now.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(old.x, old.y); ctx.lineTo(at.x, at.y);
+      ctx.arc(at.x, at.y, 1.3, 0, 2 * Math.PI); ctx.stroke(); ctx.fill();
+    }
+  }
+  var running = true;
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (es) { running = es[0].isIntersecting; }, { threshold: 0 }).observe(hero);
+  }
+  (function frame() {
+    if (running) {
+      step++;
+      for (var g = 0; g < grid.length; g++) if (grid[g].busyAge > 0) grid[g].busyAge++;
+      if (step % BIRTH_FREQ === 0 && particles.length < MAX_POP) birth();
+      move(); draw();
+    }
+    requestAnimationFrame(frame);
+  })();
+})();
+</script>
+</body>
+</html>

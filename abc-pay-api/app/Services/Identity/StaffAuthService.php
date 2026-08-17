@@ -52,6 +52,12 @@ class StaffAuthService
                 'email' => $user->email,
                 'role' => $staff->role,
                 'establishment_id' => $staff->establishment_id,
+                'establishment_name' => $establishment->name,
+                // Gate KYC : le front affiche le mur de vérification si requis et non approuvé.
+                'kyc_required' => (bool) $staff->kyc_required,
+                'kyc_status' => $user->kyc_status ?? 'none',
+                // Gate mot de passe : changement obligatoire à la 1re connexion / après reset admin.
+                'must_change_password' => (bool) $user->must_change_password,
             ],
             'token_type' => 'Bearer',
             'access_token' => $this->jwt->issueStaffAccess($user, $staff->establishment_id, $staff->role),

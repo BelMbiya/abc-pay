@@ -1,17 +1,32 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 
-/** Protège l'espace payeur : redirige vers /bienvenue si non authentifié. */
+/**
+ * Pages de l'espace payeur accessibles SANS compte : le scan d'un QR (une
+ * affiche/QR doit s'ouvrir sans être connecté ; le paiement lui-même, sur
+ * /tuition, exige désormais un compte).
+ */
+const PUBLIC_PREFIXES = ["/scan"];
+
+/** Protège l'espace payeur : redirige vers /bienvenue si non authentifié
+ *  (sauf sur les pages publiques ci-dessus). */
 export function AuthGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { ready, token } = useAuth();
+  const pathname = usePathname();
+  const isPublic = PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   useEffect(() => {
-    if (ready && !token) router.replace("/bienvenue");
-  }, [ready, token, router]);
+    if (!isPublic && ready && !token) router.replace("/bienvenue");
+  }, [isPublic, ready, token, router]);
+
+  // Paiement public : on rend directement, connecté ou non.
+  if (isPublic) {
+    return <>{children}</>;
+  }
 
   if (!ready || !token) {
     return (

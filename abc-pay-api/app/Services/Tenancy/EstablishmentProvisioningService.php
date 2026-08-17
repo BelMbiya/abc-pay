@@ -4,7 +4,14 @@ namespace App\Services\Tenancy;
 
 use App\Models\Establishment;
 use App\Models\EstablishmentStaff;
+use App\Models\FeeItem;
+use App\Models\FeeSchedule;
+use App\Models\FeeType;
+use App\Models\Learner;
+use App\Models\Reminder;
+use App\Models\Transaction;
 use App\Models\User;
+use App\Services\Tenancy\Exceptions\EstablishmentActionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -27,13 +34,6 @@ class EstablishmentProvisioningService
         'Université' => 'superieur',
     ];
 
-    /** Frais/montants par défaut selon le niveau. */
-    private const DEFAULTS = [
-        'petit' => [['Frais scolaires', "Frais d'inscription"], [50, 100]],
-        'secondaire' => [['Frais scolaires', "Frais d'inscription", "Frais d'examen"], [70, 120, 200]],
-        'superieur' => [['Minerval', 'Frais académiques'], [150, 250]],
-    ];
-
     /**
      * Liste les établissements avec leur compte de connexion (email direction).
      *
@@ -42,7 +42,7 @@ class EstablishmentProvisioningService
     public function list(): array
     {
         return Establishment::query()
-            ->with(['staff' => fn ($q) => $q->where('role', 'direction')->with('user:id,email,name')])
+            ->with(['staff' => fn ($q) => $q->where('role', 'direction')->with('user:id,email,name,kyc_status')])
             ->latest()
             ->get()
             ->map(fn (Establishment $e) => $this->row($e))
@@ -81,6 +81,12 @@ class EstablishmentProvisioningService
         if (array_key_exists('is_active', $data)) {
             $fields['is_active'] = (bool) $data['is_active'];
         }
+        if (array_key_exists('payout_phone', $data)) {
+            $fields['payout_phone'] = $data['payout_phone'];
+        }
+        if (array_key_exists('payout_method', $data)) {
+            $fields['payout_method'] = $data['payout_method'];
+        }
 
         $establishment->update($fields);
 
@@ -90,7 +96,12 @@ class EstablishmentProvisioningService
     /** DTO d'un établissement (avec son compte de connexion « direction »). */
     private function row(Establishment $e): array
     {
-        $login = $e->staff->firstWhere('role', 'direction')?->user;
+        $staff = $e->staff->firstWhere('role', 'direction');
+        $login = $staff?->user;
+
+        // Statut affiché : suspendu > en attente de vérification d'identité (direction) > actif.
+        $verificationPending = (bool) $staff?->kyc_required && ($login?->kyc_status ?? 'none') !== 'approved';
+        $status = ! $e->is_active ? 'suspended' : ($verificationPending ? 'pending' : 'active');
 
         return [
             'id' => $e->id,
@@ -103,6 +114,10 @@ class EstablishmentProvisioningService
             'currency' => $e->currency,
             'billing_mode' => $e->billing_mode,
             'is_active' => (bool) $e->is_active,
+            'status' => $status,
+            'verification_pending' => $verificationPending,
+            'payout_phone' => $e->payout_phone,
+            'payout_method' => $e->payout_method,
             'login_email' => $login?->email,
             'login_name' => $login?->name,
         ];
@@ -118,8 +133,10 @@ class EstablishmentProvisioningService
     {
         return DB::transaction(function () use ($data) {
             $level = self::LEVEL_BY_TYPE[$data['type']] ?? 'superieur';
-            [$fees, $presets] = self::DEFAULTS[$level];
 
+            // Aucun barème par défaut : l'établissement démarre VIDE et doit définir
+            // son propre barème (fee_schedules) avant de pouvoir encaisser. Tant qu'il
+            // n'en a pas, il n'apparaît pas dans la liste des écoles (cf. Directory).
             $establishment = Establishment::create([
                 'name' => $data['name'],
                 'merchant_code' => $this->uniqueMerchantCode(),
@@ -129,15 +146,43 @@ class EstablishmentProvisioningService
                 'commission_rate' => isset($data['commission_rate']) ? (float) $data['commission_rate'] / 100 : 0.02,
                 'currency' => $data['currency'] ?? 'USD',
                 'billing_mode' => $data['billing_mode'] ?? 'payment_only',
-                'fees' => $fees,
-                'presets' => $presets,
+                'fees' => [],
+                'presets' => [],
                 'is_active' => true,
             ]);
 
             $user = $this->attachLogin($establishment, $data['login_email'], $data['login_password'], $data['login_name'] ?? $data['name']);
 
+            $this->storeInitialDocuments($establishment, $data);
+
             return $this->present($establishment, $user);
         });
+    }
+
+    /**
+     * Enregistre les numéros de documents KYB (RDC) saisis à l'onboarding, en attente
+     * de revue. Types alignés sur EstablishmentDocuments::CATALOG.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function storeInitialDocuments(Establishment $establishment, array $data): void
+    {
+        $map = [
+            'rccm_number' => 'rccm',
+            'id_nat_number' => 'id_nat',
+            'nif_number' => 'nif',
+            'ministry_approval_number' => 'ministry_approval',
+        ];
+
+        foreach ($map as $field => $type) {
+            $number = $data[$field] ?? null;
+            if ($number !== null && trim((string) $number) !== '') {
+                \App\Models\EstablishmentDocument::updateOrCreate(
+                    ['establishment_id' => $establishment->id, 'type' => $type],
+                    ['number' => trim((string) $number), 'status' => 'pending'],
+                );
+            }
+        }
     }
 
     /**
@@ -174,10 +219,52 @@ class EstablishmentProvisioningService
             }
             if (! empty($data['login_password'])) {
                 $user->password = $data['login_password']; // hashé par le cast
+                $user->must_change_password = true; // reset admin → changement obligatoire ensuite
             }
             $user->save();
 
             return $this->present($establishment->fresh(), $user);
+        });
+    }
+
+    /**
+     * Supprime DÉFINITIVEMENT un établissement et sa configuration (compte de
+     * connexion, frais, barèmes, apprenants, relances).
+     *
+     * GARDE-FOU (intégrité financière) : un établissement qui a un HISTORIQUE de
+     * transactions ne peut PAS être supprimé — il faut le suspendre. On préserve
+     * ainsi la piste d'audit comptable (aligné sur la suppression de compte payeur).
+     *
+     * @throws EstablishmentActionException
+     */
+    public function delete(Establishment $establishment): void
+    {
+        if (Transaction::where('establishment_id', $establishment->id)->exists()) {
+            throw new EstablishmentActionException(
+                'Cet établissement a un historique de transactions et ne peut être supprimé. Suspends-le à la place.'
+            );
+        }
+
+        DB::transaction(function () use ($establishment) {
+            $id = $establishment->id;
+
+            // Comptes de connexion (direction/staff) dédiés à cet établissement.
+            $staffUserIds = EstablishmentStaff::where('establishment_id', $id)->pluck('user_id');
+
+            // Config de facturation & scolarité (enfants d'abord pour respecter les FK).
+            FeeItem::where('establishment_id', $id)->delete();
+            Reminder::where('establishment_id', $id)->delete();
+            FeeSchedule::where('establishment_id', $id)->delete();
+            \App\Models\EstablishmentDocument::where('establishment_id', $id)->delete();
+            Learner::where('establishment_id', $id)->delete();
+            FeeType::where('establishment_id', $id)->delete();
+            EstablishmentStaff::where('establishment_id', $id)->delete();
+
+            // Supprime les comptes de connexion dédiés — sauf s'ils portent des
+            // transactions (compte réutilisé) : on les laisse alors intacts.
+            User::whereIn('id', $staffUserIds)->whereDoesntHave('transactions')->delete();
+
+            $establishment->delete();
         });
     }
 
@@ -189,11 +276,15 @@ class EstablishmentProvisioningService
             'email' => $email,
             'password' => $password, // hashé par le cast du modèle
         ]);
+        // Mot de passe provisoire → changement OBLIGATOIRE à la 1re connexion (hors allowlist).
+        $user->forceFill(['must_change_password' => true])->save();
 
         EstablishmentStaff::create([
             'establishment_id' => $establishment->id,
             'user_id' => $user->id,
             'role' => 'direction',
+            // Comptes créés désormais : vérification KYC obligatoire pour accéder/agir.
+            'kyc_required' => true,
         ]);
 
         return $user;

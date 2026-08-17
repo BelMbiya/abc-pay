@@ -15,6 +15,28 @@ export interface AdminUser {
   name?: string | null;
   email: string;
   role: string;
+  permissions?: string[];
+  must_change_password?: boolean;
+}
+
+/**
+ * L'admin connecté possède-t-il cette permission ?
+ * Si les permissions ne sont pas (encore) connues — ancienne session, avant le fetch —
+ * on NE MASQUE PAS (fail-open pour l'affichage ; l'API reste l'autorité qui bloque l'accès).
+ */
+export function adminCan(permission: string): boolean {
+  const perms = getAdminUser()?.permissions;
+  if (!Array.isArray(perms)) return true;
+  return perms.includes(permission);
+}
+
+/** Récupère les permissions effectives de l'admin connecté et met à jour la session stockée. */
+export async function refreshAdminPermissions(): Promise<void> {
+  const data = await api.get<{ role: string; permissions: string[]; must_change_password: boolean }>(
+    "/api/v1/admin/me/permissions",
+    { token: getAdminToken() ?? undefined },
+  );
+  updateAdminUser({ role: data.role, permissions: data.permissions, must_change_password: data.must_change_password });
 }
 
 export function getAdminToken(): string | null {
@@ -63,6 +85,19 @@ export function clearAdminToken(): void {
 export async function adminLogin(email: string, password: string): Promise<{ token: string; refresh?: string; user: AdminUser }> {
   const data = await api.post<{ access_token: string; refresh_token?: string; admin: AdminUser }>("/api/v1/auth/admin/login", { email, password });
   return { token: data.access_token, refresh: data.refresh_token, user: data.admin };
+}
+
+/** Met à jour le profil stocké (localStorage) sans toucher aux jetons. */
+export function updateAdminUser(patch: Partial<AdminUser>): void {
+  const u = getAdminUser();
+  const token = localStorage.getItem(STORAGE_KEY);
+  if (u && token) setAdminSession(token, { ...u, ...patch });
+}
+
+/** Change le mot de passe admin (obligatoire à la 1re connexion) puis lève le drapeau local. */
+export async function changeAdminPassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api.post("/api/v1/admin/password", { current_password: currentPassword, new_password: newPassword }, { token: getAdminToken() ?? undefined });
+  updateAdminUser({ must_change_password: false });
 }
 
 /** Met à jour le profil de l'admin connecté (nom, email, mot de passe). */

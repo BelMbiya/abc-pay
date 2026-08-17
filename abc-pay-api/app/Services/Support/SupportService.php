@@ -4,6 +4,8 @@ namespace App\Services\Support;
 
 use App\Models\SupportTicket;
 use App\Models\User;
+use App\Services\Notification\AdminNotificationService;
+use App\Services\Notification\NotificationService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -19,6 +21,11 @@ class SupportService
     /** Catégories déclenchant un gel automatique du compte. */
     private const AUTO_FREEZE = ['compromised', 'lost_device'];
 
+    public function __construct(
+        private readonly AdminNotificationService $adminNotify,
+        private readonly NotificationService $notify,
+    ) {}
+
     /**
      * Ouvre un ticket pour l'utilisateur. Déclenche le gel si catégorie de sécurité.
      *
@@ -26,7 +33,7 @@ class SupportService
      */
     public function open(User $user, array $data): array
     {
-        return DB::transaction(function () use ($user, $data) {
+        $ticket = DB::transaction(function () use ($user, $data) {
             $freeze = in_array($data['category'], self::AUTO_FREEZE, true);
 
             $ticket = SupportTicket::create([
@@ -43,8 +50,13 @@ class SupportService
                 $this->freeze($user, 'Compte gelé suite à un signalement de sécurité ('.$data['category'].').');
             }
 
-            return $this->present($ticket->fresh());
+            return $ticket->fresh();
         });
+
+        // Alerte admin hors transaction (best-effort : ne casse jamais l'ouverture du ticket).
+        $this->alertAdmins($ticket);
+
+        return $this->present($ticket);
     }
 
     /**
@@ -53,7 +65,7 @@ class SupportService
      */
     public function panic(User $user): array
     {
-        return DB::transaction(function () use ($user) {
+        $ticket = DB::transaction(function () use ($user) {
             $this->freeze($user, 'Compte bloqué par son titulaire (mesure de sécurité).');
 
             $ticket = SupportTicket::create([
@@ -65,8 +77,12 @@ class SupportService
                 'priority' => 'urgent',
             ]);
 
-            return $this->present($ticket->fresh());
+            return $ticket->fresh();
         });
+
+        $this->alertAdmins($ticket);
+
+        return $this->present($ticket);
     }
 
     /** Gel : blocage + révocation de toutes les sessions (affectation explicite, hors allowlist). */
@@ -120,7 +136,40 @@ class SupportService
         }
         $ticket->save();
 
+        // Prévient le titulaire qu'une réponse est disponible (comble un angle mort UX).
+        if (! empty($data['response']) && $ticket->user_id) {
+            try {
+                $this->notify->notify(
+                    userId: $ticket->user_id,
+                    type: 'support',
+                    level: 'info',
+                    title: 'Réponse du support · '.$ticket->reference,
+                    body: $ticket->status === 'resolved' ? 'Votre demande a été traitée.' : 'Le support a répondu à votre demande.',
+                    meta: ['ticket_id' => $ticket->id, 'reference' => $ticket->reference],
+                );
+            } catch (\Throwable) {
+                // silencieux : la réponse admin est déjà enregistrée.
+            }
+        }
+
         return $this->present($ticket->fresh('user'), true);
+    }
+
+    /** Alerte le fil admin à l'ouverture d'un ticket (best-effort). */
+    private function alertAdmins(SupportTicket $ticket): void
+    {
+        try {
+            $urgent = $ticket->priority === 'urgent';
+            $this->adminNotify->push(
+                type: 'support',
+                level: $urgent ? 'critical' : 'warning',
+                title: ($urgent ? 'Ticket URGENT · ' : 'Nouveau ticket · ').$ticket->reference,
+                body: $ticket->subject,
+                meta: ['ticket_id' => $ticket->id, 'reference' => $ticket->reference, 'category' => $ticket->category],
+            );
+        } catch (\Throwable) {
+            // silencieux : le ticket est déjà ouvert, l'alerte est secondaire.
+        }
     }
 
     /** Numérotation lisible TCK-AAAA-NNNNN. */

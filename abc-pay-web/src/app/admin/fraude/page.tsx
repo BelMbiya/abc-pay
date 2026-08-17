@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ShieldAlert, RefreshCw, Ban, Check } from "lucide-react";
-import { StatusPill, Pagination, usePagination, useToast } from "@/components/ui";
+import { ShieldAlert, RefreshCw, Ban, Check, User as UserIcon } from "lucide-react";
+import { StatusPill, Pagination, usePagination, useToast, useConfirm } from "@/components/ui";
 import { PageHeader } from "@/components/backoffice/StatCard";
+import { AdminUserSheet } from "@/components/admin/AdminUserSheet";
 import { money } from "@/lib/money";
 import { txParty } from "@/lib/transactions-api";
 import { fetchFraud, dismissFlag, blockFlag, RULE_LABELS, SEVERITY, FRAUD_STATUS, type FraudFlag } from "@/lib/fraud-api";
@@ -21,11 +22,18 @@ function fdate(iso: string | null): string {
 
 export default function FraudePage() {
   const { showToast } = useToast();
+  const confirm = useConfirm();
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [flags, setFlags] = useState<FraudFlag[]>([]);
   const [open, setOpen] = useState(0);
   const [filter, setFilter] = useState("open");
   const [busy, setBusy] = useState<string | null>(null);
+  const [detailUser, setDetailUser] = useState<number | null>(null);
+
+  const viewAccount = (fl: FraudFlag) => {
+    if (fl.user_id) setDetailUser(fl.user_id);
+    else showToast("Transaction sans compte (payeur invité).");
+  };
 
   const load = useCallback(async (status = filter) => {
     setState("loading");
@@ -55,6 +63,10 @@ export default function FraudePage() {
   };
 
   const act = async (fl: FraudFlag, action: "dismiss" | "block") => {
+    const ok = action === "block"
+      ? await confirm({ title: "Bloquer ce compte ?", message: "Le compte sera gelé : il ne pourra plus initier d'opération jusqu'à son déblocage.", confirmLabel: "Bloquer", danger: true })
+      : await confirm({ title: "Écarter ce signalement ?", message: "Il sera classé comme faux positif.", confirmLabel: "Écarter" });
+    if (!ok) return;
     setBusy(fl.id);
     try {
       if (action === "dismiss") {
@@ -135,26 +147,34 @@ export default function FraudePage() {
                         <tr key={fl.id} className="border-t border-white text-[13px] align-top">
                           <td className="py-3 pr-3 text-gray-500">{fdate(fl.created_at)}</td>
                           <td className="py-3 pr-3">
-                            <div className="font-bold text-ink">{p.title}</div>
-                            {p.sub ? <div className="text-[11.5px] text-gray-500">{p.sub}</div> : null}
+                            <button type="button" onClick={() => viewAccount(fl)} className="text-left font-bold text-ink hover:text-blue-600 hover:underline">{fl.user?.name || p.title}</button>
+                            <div className="flex items-center gap-1.5 text-[11.5px] text-gray-500">
+                              {fl.user?.phone || p.sub || "—"}
+                              {fl.user?.is_blocked ? <span className="rounded-pill bg-[#FDE7E8] px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-red">bloqué</span> : null}
+                            </div>
                           </td>
                           <td className="py-3 pr-3 font-bold text-ink">{fl.transaction ? money(fl.transaction.amount, fl.transaction.currency) : "—"}</td>
                           <td className="py-3 pr-3 text-gray-700">{RULE_LABELS[fl.rule] ?? fl.rule}</td>
                           <td className="py-3 pr-3"><StatusPill tone={sev.tone}>{sev.label} · {fl.score}</StatusPill></td>
                           <td className="py-3 pr-3 text-[12px] text-gray-500">{fl.reason}</td>
                           <td className="py-3 text-right">
-                            {fl.status === "open" ? (
-                              <div className="flex justify-end gap-1.5">
-                                <button type="button" title="Écarter (faux positif)" disabled={busy === fl.id} onClick={() => act(fl, "dismiss")} className="flex size-8 items-center justify-center rounded-lg bg-white text-green hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                                  <Check className="size-4" strokeWidth={2.2} />
-                                </button>
-                                <button type="button" title="Bloquer le compte" disabled={busy === fl.id} onClick={() => act(fl, "block")} className="flex size-8 items-center justify-center rounded-lg bg-white text-red hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                                  <Ban className="size-4" strokeWidth={2.2} />
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-[11.5px] font-bold text-gray-500">{FRAUD_STATUS[fl.status] ?? fl.status}</span>
-                            )}
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button type="button" title="Voir le compte concerné" onClick={() => viewAccount(fl)} className="flex size-8 items-center justify-center rounded-lg bg-white text-blue-600 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                                <UserIcon className="size-4" strokeWidth={2.2} />
+                              </button>
+                              {fl.status === "open" ? (
+                                <>
+                                  <button type="button" title="Écarter (faux positif)" disabled={busy === fl.id} onClick={() => act(fl, "dismiss")} className="flex size-8 items-center justify-center rounded-lg bg-white text-green hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                                    <Check className="size-4" strokeWidth={2.2} />
+                                  </button>
+                                  <button type="button" title="Bloquer le compte" disabled={busy === fl.id} onClick={() => act(fl, "block")} className="flex size-8 items-center justify-center rounded-lg bg-white text-red hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                                    <Ban className="size-4" strokeWidth={2.2} />
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="ml-1 text-[11.5px] font-bold text-gray-500">{FRAUD_STATUS[fl.status] ?? fl.status}</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -165,6 +185,8 @@ export default function FraudePage() {
           <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onPage={setPage} />
         </>
       )}
+
+      <AdminUserSheet userId={detailUser} onClose={() => setDetailUser(null)} onChanged={() => load()} />
     </div>
   );
 }

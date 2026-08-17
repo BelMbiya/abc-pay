@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
 
-/** Reçu de paiement (montant + lignes + statut PAYÉ) — cf. .receipt-card du MVP. */
+/** Reçu (montant + lignes + badge de statut). `status` par défaut « PAYÉ » ;
+ *  passer « ENVOYÉ » / « REÇU » / « RETIRÉ » selon le type d'opération. */
 export function Receipt({
   amount,
   rows,
+  status = "PAYÉ",
 }: {
   amount: string;
   rows: { label: ReactNode; value: ReactNode }[];
+  status?: string;
 }) {
   return (
     <div className="mt-3.5 rounded-3xl bg-gray-100 p-[18px]">
@@ -14,7 +17,7 @@ export function Receipt({
         <b className="font-display text-[26px] font-extrabold text-ink">{amount}</b>
         <div>
           <span className="mt-2 inline-block rounded-pill bg-success-bg px-2.5 py-1 text-[10px] font-extrabold tracking-wide text-green">
-            PAYÉ
+            {status}
           </span>
         </div>
       </div>
