@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Services\Payment\Gateways\ArakaGateway;
+use App\Services\Payment\Gateways\CinetPayGateway;
+use App\Services\Payment\Gateways\Contracts\PaymentGateway;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -13,7 +16,12 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // Passerelle d'encaissement active (pattern Strategy) : résolue par config.
+        // Le métier dépend de l'abstraction PaymentGateway (DIP), jamais du concret.
+        $this->app->singleton(PaymentGateway::class, fn ($app) => match (config('payment.default_gateway')) {
+            'araka' => $app->make(ArakaGateway::class),
+            default => $app->make(CinetPayGateway::class),
+        });
     }
 
     public function boot(): void

@@ -19,6 +19,19 @@ class CinetPayClient
         return (bool) config('cinetpay.enabled');
     }
 
+    /**
+     * Code opérateur CinetPay (`payment_method`) pour un canal abc pay (mpesa/airtel/…).
+     * VERROUILLE l'opérateur sur la page de paiement (cohérence numéro ↔ opérateur exigée
+     * par CinetPay). Repli sur la méthode par défaut si le canal n'est pas mappé. Partagé
+     * par tous les encaissements (Tuition, Paiement de service…).
+     */
+    public function paymentMethodFor(string $channel): ?string
+    {
+        $map = (array) config('cinetpay.method_map', []);
+
+        return $map[$channel] ?? config('cinetpay.default_payment_method');
+    }
+
     /** Option de vérification TLS : bundle CA embarqué si présent, sinon booléen système. */
     private function verify(): bool|string
     {
@@ -61,6 +74,16 @@ class CinetPayClient
     private function auth(): PendingRequest
     {
         return $this->http()->withToken($this->token());
+    }
+
+    /**
+     * Invalide le jeton en cache. À appeler après un échec qui peut venir d'un jeton
+     * PÉRIMÉ (ex. jeton minté avant l'autorisation de l'IP → CinetPay l'accepte mais
+     * refuse l'opération) : la tentative suivante se re-connecte avec un jeton frais.
+     */
+    public function forgetToken(): void
+    {
+        Cache::forget('cinetpay.token');
     }
 
     /**

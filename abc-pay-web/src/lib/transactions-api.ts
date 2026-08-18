@@ -107,3 +107,17 @@ export async function fetchMyTransactions(): Promise<MyTransaction[]> {
 export async function requestMyRefund(transactionId: string, reason: string): Promise<void> {
   await api.post("/api/v1/refunds", { transaction_id: transactionId, reason });
 }
+
+/**
+ * Jeton d'authenticité (qr_token) du reçu d'UNE transaction du titulaire — pour
+ * re-générer le PDF avec son QR depuis l'historique. Best-effort : en cas d'échec, on
+ * retombe sur un reçu sans QR (la vérification manuelle reste possible).
+ */
+export async function fetchReceiptToken(transactionId: string): Promise<string | null> {
+  try {
+    const data = await api.get<{ qr_token?: string | null }>(`/api/v1/transactions/${transactionId}/receipt`);
+    return data?.qr_token ?? null;
+  } catch {
+    return null;
+  }
+}

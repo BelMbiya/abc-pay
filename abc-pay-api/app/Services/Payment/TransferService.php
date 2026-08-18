@@ -7,8 +7,14 @@ use App\Models\User;
 use App\Services\Document\ReceiptService;
 use App\Services\Fraud\FraudService;
 use App\Services\Notification\NotificationService;
+use App\Services\Payment\Gateways\Contracts\PaymentGateway;
+use App\Services\Payment\Gateways\Contracts\PaymentRequest;
+use App\Services\Payment\Gateways\Contracts\PaymentState;
+use App\Services\Payment\Gateways\Exceptions\GatewayException;
 use App\Services\Platform\SettingsService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Domaine Payment — transactions NON-Tuition du payeur (envoi P2P, paiement de service).
@@ -25,6 +31,7 @@ class TransferService
         private readonly NotificationService $notifications,
         private readonly SettingsService $settings,
         private readonly FraudService $fraud,
+        private readonly PaymentGateway $gateway,
     ) {}
 
     /**
@@ -64,7 +71,15 @@ class TransferService
                 return $this->present($tx, $failure);
             }
 
-            // ── Succès ──
+            // ── ENCAISSEMENT RÉEL (passerelle) : « Payer un service » débite le mobile money
+            //    du payeur via CinetPay. La transaction reste `pending` jusqu'au retour de
+            //    statut / webhook. (L'envoi P2P `send` est un DÉCAISSEMENT réglementé → reste
+            //    en mock ici, traité hors passerelle.) ──
+            if ($data['type'] === 'service' && $this->gateway->enabled()) {
+                return $this->createServiceViaGateway($user, $data, $amount, $currency, $idempotencyKey);
+            }
+
+            // ── Succès (mode démo / envoi P2P) ──
             $tx = $this->record($user, $data, $amount, $currency, 'confirmee', $idempotencyKey);
             $this->fraud->flag($tx); // évaluation anti-fraude
             $this->receipts->issueFor($tx);
@@ -101,6 +116,111 @@ class TransferService
 
             return $this->present($tx->fresh('receipt'));
         });
+    }
+
+    /**
+     * Encaissement « Payer un service » via CinetPay : crée la transaction `pending`,
+     * initialise le paiement web (opérateur verrouillé sur le canal) et renvoie
+     * `payment_url`. Le statut réel est posé au retour (page de statut) ou par le webhook.
+     * Sans `payment_url`, on ÉCHOUE clairement (le `DB::transaction` annule la ligne).
+     *
+     * @return array<string, mixed>
+     */
+    private function createServiceViaGateway(User $user, array $data, float $amount, string $currency, ?string $idem): array
+    {
+        $tx = $this->record($user, $data, $amount, $currency, 'pending', $idem);
+        $tx->forceFill(['gateway' => $this->gateway->name()])->save();
+
+        $merchantRef = 'ABCS'.strtoupper(Str::random(12)); // 16 car. (≤20 Araka, ≤30 CinetPay)
+        [$firstName, $lastName] = $this->splitClientName($user->name);
+        $statutUrl = config('cinetpay.front_url').'/paiement/statut?tx='.$tx->id;
+
+        try {
+            $init = $this->gateway->initPayment(new PaymentRequest(
+                merchantRef: $merchantRef,
+                amount: (int) round($amount),
+                currency: $currency,
+                channel: $data['channel'],
+                designation: $this->label($data),
+                clientEmail: $user->email ?: 'paiement@abcpay.cd',
+                clientFirstName: $firstName,
+                clientLastName: $lastName,
+                clientPhone: $user->phone,
+                successUrl: $statutUrl,
+                failedUrl: $statutUrl,
+                notifyUrl: config('cinetpay.notify_base').'/api/v1/webhooks/'.$this->gateway->name().'/payment',
+            ));
+        } catch (GatewayException $e) {
+            throw ValidationException::withMessages(['payment' => $e->getMessage()]);
+        }
+
+        $tx->forceFill([
+            'gateway_ref' => $init->reference,
+            'payment_token' => $init->paymentToken,
+            'notify_token' => $init->notifyToken,
+        ])->save();
+
+        return $this->present($tx) + ['payment_url' => $init->redirectUrl];
+    }
+
+    /**
+     * Vérifie ACTIVEMENT le statut d'un paiement de service en attente auprès de CinetPay
+     * (fallback webhook, indispensable en local). Confirme ou échoue en conséquence.
+     */
+    public function refreshStatus(Transaction $transaction): Transaction
+    {
+        if ($transaction->status !== 'pending' || $transaction->gateway !== $this->gateway->name()
+            || ! $this->gateway->enabled() || ! $transaction->gateway_ref) {
+            return $transaction;
+        }
+
+        try {
+            $state = $this->gateway->checkPayment($transaction->gateway_ref);
+        } catch (\Throwable) {
+            return $transaction; // réseau indisponible : on retentera au prochain appel
+        }
+
+        if ($state === PaymentState::Success) {
+            $this->confirmService($transaction);
+        } elseif ($state === PaymentState::Failed) {
+            $transaction->forceFill(['status' => 'failed'])->save();
+        }
+
+        return $transaction->fresh();
+    }
+
+    /**
+     * Confirme un paiement de service (depuis le statut CinetPay ou le webhook) : passe en
+     * `confirmee`, émet le reçu, évalue la fraude et notifie le payeur. IDEMPOTENT.
+     */
+    public function confirmService(Transaction $transaction): void
+    {
+        if ($transaction->status === 'confirmee') {
+            return;
+        }
+
+        $transaction->forceFill(['status' => 'confirmee', 'confirmed_at' => now()])->save();
+        $this->receipts->issueFor($transaction);
+        $this->fraud->flag($transaction);
+
+        if ($transaction->user_id) {
+            $this->notifications->notify(
+                $transaction->user_id, 'service', 'success', 'Paiement réussi',
+                ($transaction->label ?: 'Paiement de service').' de '.$this->money((float) $transaction->amount, $transaction->currency).' effectué.',
+                ['amount' => (float) $transaction->amount, 'currency' => $transaction->currency],
+            );
+        }
+    }
+
+    /** Découpe un nom en prénom/nom (min. 2 caractères chacun, exigé par CinetPay). */
+    private function splitClientName(?string $full): array
+    {
+        $parts = preg_split('/\s+/', trim((string) $full), 2, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return [
+            mb_strlen($parts[0] ?? '') >= 2 ? $parts[0] : 'Client',
+            mb_strlen($parts[1] ?? '') >= 2 ? $parts[1] : 'AbcPay',
+        ];
     }
 
     /** Raison d'échec (null = succès). Le plafond est comparé en USD (converti). */

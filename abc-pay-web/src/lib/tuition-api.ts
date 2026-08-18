@@ -34,12 +34,13 @@ export interface TuitionPaymentPayload {
 }
 
 export interface TuitionPaymentResult {
+  transactionId: string | null; // id de la transaction (pour le suivi de statut)
   receiptNumber: string | null;
   receiptToken: string | null; // jeton d'authenticité (QR + code de vérification)
   status: "confirmee" | "echouee" | "pending";
   reason: string | null; // raison exacte en cas d'échec
-  // Passerelle CinetPay : URL de la page de paiement hébergée (à ouvrir pour finaliser).
-  // La confirmation réelle arrive ensuite via webhook (statut « pending » en attendant).
+  // Passerelle : URL de page hébergée à ouvrir (CinetPay). NULL = push direct (Araka) →
+  // on va directement à la page de statut qui interroge (poll) jusqu'à confirmation.
   redirectUrl: string | null;
 }
 
@@ -65,7 +66,7 @@ export async function fetchPaymentStatus(transactionId: string): Promise<Payment
 
 export async function createTuitionPayment(payload: TuitionPaymentPayload): Promise<TuitionPaymentResult> {
   try {
-    const data = await api.post<{ transaction?: { status?: string; failure_reason?: string | null }; receipt?: { number?: string; qr_token?: string }; payment_url?: string }>(
+    const data = await api.post<{ transaction?: { id?: string; status?: string; failure_reason?: string | null }; receipt?: { number?: string; qr_token?: string }; payment_url?: string }>(
       `${V1}/payments`,
       payload,
       { idempotent: true },
@@ -75,6 +76,7 @@ export async function createTuitionPayment(payload: TuitionPaymentPayload): Prom
     const status: TuitionPaymentResult["status"] =
       raw === "echouee" ? "echouee" : raw === "pending" ? "pending" : "confirmee";
     return {
+      transactionId: data?.transaction?.id ?? null,
       receiptNumber: data?.receipt?.number ?? null,
       receiptToken: data?.receipt?.qr_token ?? null,
       status,
@@ -86,7 +88,7 @@ export async function createTuitionPayment(payload: TuitionPaymentPayload): Prom
       e instanceof ApiError
         ? (e.fields ? Object.values(e.fields).flat()[0] ?? e.message : e.message)
         : "Connexion impossible. Vérifie ta connexion et réessaie.";
-    return { receiptNumber: null, receiptToken: null, status: "echouee", reason, redirectUrl: null };
+    return { transactionId: null, receiptNumber: null, receiptToken: null, status: "echouee", reason, redirectUrl: null };
   }
 }
 

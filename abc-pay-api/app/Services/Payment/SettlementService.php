@@ -131,11 +131,13 @@ class SettlementService
             $commission = round((float) $txs->sum('commission'), 2);
             $net = round($gross - $commission, 2);
 
-            // Avec passerelle : un numéro de réception (mobile money) est requis.
-            $gatewayOn = $this->cinetpay->enabled();
-            if ($gatewayOn && ! $establishment->payout_phone) {
+            // Reversement AUTOMATIQUE (transfert CinetPay) : piloté par son propre flag,
+            // indépendant de l'encaissement. OFF → acte comptable (marqué « payé »).
+            // ON → transfert réel, qui exige un numéro de réception (mobile money).
+            $payoutAuto = (bool) config('cinetpay.transfer_enabled');
+            if ($payoutAuto && ! $establishment->payout_phone) {
                 throw ValidationException::withMessages([
-                    'payout_phone' => "L'établissement n'a pas de numéro de reversement configuré.",
+                    'payout_phone' => "Reversement automatique activé mais l'établissement n'a pas de numéro de reversement (mobile money) configuré. Renseigne-le, ou désactive le reversement automatique.",
                 ]);
             }
 
@@ -148,11 +150,11 @@ class SettlementService
                 'net' => $net,
                 'currency' => $establishment->currency ?: 'USD',
                 'transactions_count' => $txs->count(),
-                'status' => $gatewayOn ? 'pending' : 'paid', // réel = posé par le webhook transfert
-                'gateway' => $gatewayOn ? 'cinetpay' : null,
+                'status' => $payoutAuto ? 'pending' : 'paid', // réel = posé par le webhook transfert
+                'gateway' => $payoutAuto ? 'cinetpay' : null,
                 'reference' => $reference,
                 'executed_by' => $executedBy,
-                'paid_at' => $gatewayOn ? null : now(),
+                'paid_at' => $payoutAuto ? null : now(),
             ]);
 
             // Rattachement GARDÉ : on ne solde que ce qui est encore en attente. Si une
@@ -164,7 +166,7 @@ class SettlementService
                 throw new NothingToSettleException();
             }
 
-            if ($gatewayOn) {
+            if ($payoutAuto) {
                 // Envoi RÉEL via CinetPay. Atomique : si l'appel échoue, toute la
                 // transaction DB est annulée (aucun reversement fantôme). Le statut
                 // « paid » sera posé par le webhook transfert après confirmation.
@@ -179,10 +181,25 @@ class SettlementService
                         'notify_url' => config('cinetpay.notify_base').'/api/v1/webhooks/cinetpay/transfer',
                     ]);
                 } catch (\Illuminate\Http\Client\RequestException $e) {
+                    // Même format d'erreur lisible que l'encaissement (IP non autorisée, etc.).
+                    $this->cinetpay->forgetToken(); // au cas où le jeton en cache serait périmé
                     $body = (array) ($e->response?->json() ?? []);
-                    $reason = $body['description'] ?? $body['message'] ?? 'passerelle indisponible.';
+                    $reason = \App\Services\Payment\Gateways\CinetPayGateway::humanReason($body);
                     throw ValidationException::withMessages(['transfer' => 'Reversement refusé par CinetPay : '.$reason]);
                 }
+
+                // Init transfert ACCEPTÉE = code 2002 (PENDING). CinetPay peut répondre HTTP 200
+                // avec `code 2010 FAILED` (ex. module Transfert inactif → 1004 INVALID_PARAMS) :
+                // on remonte la VRAIE raison et on annule (jamais un faux « en cours »).
+                $tCode = (string) ($res['code'] ?? '');
+                $tStatus = strtoupper((string) ($res['status'] ?? ''));
+                if ($tCode !== '2002' && ! in_array($tStatus, ['PENDING', 'SUCCESS', 'SUCCES'], true)) {
+                    $info = (! empty($res['details']) && is_array($res['details'])) ? $res['details'] : $res;
+                    throw ValidationException::withMessages([
+                        'transfer' => 'Reversement refusé par CinetPay : '.\App\Services\Payment\Gateways\CinetPayGateway::humanReason($info),
+                    ]);
+                }
+
                 $settlement->forceFill([
                     'gateway_transfer_id' => $res['transaction_id'] ?? ($res['data']['transaction_id'] ?? null),
                     'notify_token' => $res['notify_token'] ?? ($res['data']['notify_token'] ?? null),

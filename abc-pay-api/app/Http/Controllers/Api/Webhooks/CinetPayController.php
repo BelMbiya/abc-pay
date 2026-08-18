@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Webhooks;
 use App\Http\Controllers\Controller;
 use App\Models\Settlement;
 use App\Models\Transaction;
+use App\Services\Payment\TransferService;
 use App\Services\Payment\TuitionPaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,10 @@ use Illuminate\Http\Request;
  */
 class CinetPayController extends Controller
 {
-    public function __construct(private readonly TuitionPaymentService $tuition) {}
+    public function __construct(
+        private readonly TuitionPaymentService $tuition,
+        private readonly TransferService $transfers,
+    ) {}
 
     /**
      * Notification d'ENCAISSEMENT (paiement web). On ne fait PAS confiance au corps :
@@ -37,7 +41,10 @@ class CinetPayController extends Controller
 
         $transaction = $ref ? Transaction::where('gateway_ref', $ref)->first() : null;
         if ($transaction) {
-            $this->tuition->refreshStatus($transaction); // re-vérif autoritaire + confirm/fail (idempotent)
+            // Re-vérif autoritaire + confirm/fail (idempotent), dispatch par type.
+            $transaction->type === 'service'
+                ? $this->transfers->refreshStatus($transaction)
+                : $this->tuition->refreshStatus($transaction);
         }
 
         return response()->json(['ok' => true]);

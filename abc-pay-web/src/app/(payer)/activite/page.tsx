@@ -7,7 +7,7 @@ import { GraduationCap, ArrowUpRight, ArrowDownLeft, Zap, Download, Inbox, Refre
 import { money, toBase } from "@/lib/money";
 import { useToast, Pagination, usePagination } from "@/components/ui";
 import { RefundRequestSheet } from "@/components/RefundRequestSheet";
-import { fetchMyTransactions, requestMyRefund, channelLabel, txTitle, txSign, TX_TYPES, type MyTransaction } from "@/lib/transactions-api";
+import { fetchMyTransactions, requestMyRefund, fetchReceiptToken, channelLabel, txTitle, txSign, TX_TYPES, type MyTransaction } from "@/lib/transactions-api";
 import { downloadReceipt, type ReceiptData, type ReceiptKind } from "@/lib/receipt";
 import { PERIODS, inPeriod, DEFAULT_PERIOD, type Period } from "@/lib/period";
 
@@ -103,7 +103,9 @@ export default function ActivitePage() {
   const handleDownload = async (t: MyTransaction) => {
     setDownloading(t.id);
     try {
-      await downloadReceipt(toReceiptData(t));
+      // Le qr_token (secret) n'est pas dans la liste : on le récupère pour inclure le QR.
+      const qrToken = await fetchReceiptToken(t.id);
+      await downloadReceipt({ ...toReceiptData(t), qrToken: qrToken ?? undefined });
       showToast("Reçu téléchargé");
     } catch {
       showToast("Échec du téléchargement");

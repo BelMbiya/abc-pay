@@ -194,6 +194,12 @@ export default function TuitionPage() {
       window.location.href = res.redirectUrl;
       return;
     }
+    // Push direct (Araka) : pas de page hébergée, la transaction est « pending » → on suit
+    // le statut (le payeur valide sur son téléphone) jusqu'à confirmation.
+    if (res.status === "pending" && res.transactionId) {
+      router.push(`/paiement/statut?tx=${res.transactionId}`);
+      return;
+    }
     setApiReceipt(res.receiptNumber);
     setApiToken(res.receiptToken);
     goto("receipt");

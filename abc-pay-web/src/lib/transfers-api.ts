@@ -17,23 +17,29 @@ export interface TransferInput {
 }
 
 export interface TransferResult {
+  transactionId: string | null; // id de la transaction (suivi de statut)
   receiptNumber: string | null;
-  status: string; // confirmee | echouee
+  status: string; // confirmee | pending | echouee
   reason: string | null; // raison en cas d'échec
+  // Passerelle (paiement de service) : URL de page hébergée à ouvrir (CinetPay). NULL =
+  // push direct (Araka) → on va à la page de statut qui interroge (poll) jusqu'à confirmation.
+  redirectUrl: string | null;
 }
 
 export async function recordTransaction(input: TransferInput): Promise<TransferResult> {
   try {
-    const data = await api.post<{ transaction?: { status?: string; failure_reason?: string | null }; receipt?: { number?: string } }>(
+    const data = await api.post<{ transaction?: { id?: string; status?: string; failure_reason?: string | null }; receipt?: { number?: string }; payment_url?: string }>(
       "/api/v1/transactions",
       input,
       { idempotent: true },
     );
     pingNotifications(); // rafraîchit la cloche aussitôt
     return {
+      transactionId: data?.transaction?.id ?? null,
       receiptNumber: data?.receipt?.number ?? null,
       status: data?.transaction?.status ?? "confirmee",
       reason: data?.transaction?.failure_reason ?? null,
+      redirectUrl: data?.payment_url ?? null,
     };
   } catch (e) {
     // AUCUNE erreur silencieuse : un échec technique (réseau, validation, 500) ne doit
@@ -43,6 +49,6 @@ export async function recordTransaction(input: TransferInput): Promise<TransferR
         ? (e.fields ? Object.values(e.fields).flat()[0] ?? e.message : e.message)
         : "Connexion impossible. Vérifie ta connexion et réessaie.";
     pingNotifications();
-    return { receiptNumber: null, status: "echouee", reason };
+    return { transactionId: null, receiptNumber: null, status: "echouee", reason, redirectUrl: null };
   }
 }

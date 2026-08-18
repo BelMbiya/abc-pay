@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/backoffice/StatCard";
 import { OnboardEstablishmentSheet } from "@/components/admin/OnboardEstablishmentSheet";
 import { ConfigureEstablishmentSheet } from "@/components/admin/ConfigureEstablishmentSheet";
 import { fetchAdminEstablishments, updateEstablishment, fetchEstablishmentSettlements, executeSettlement, type AdminEstablishment } from "@/lib/admin-api";
+import { ApiError } from "@/lib/api";
 
 export default function AdminEstablishmentsPage() {
   const { showToast } = useToast();
@@ -78,10 +79,16 @@ export default function AdminEstablishmentsPage() {
       });
       if (!ok) return;
       const res = await executeSettlement(e.id);
-      showToast(`Reversement de ${res.net.toLocaleString("fr-FR")} ${sym} effectué`);
+      const suffix = res.status === "pending" ? " (transfert en cours)" : "";
+      showToast(`Reversement de ${res.net.toLocaleString("fr-FR")} ${sym} effectué${suffix}`);
       await load();
-    } catch {
-      showToast("Reversement impossible");
+    } catch (err) {
+      // Remonter la VRAIE raison (numéro manquant, transfert refusé…) au lieu d'un générique.
+      const msg =
+        err instanceof ApiError
+          ? (err.fields ? Object.values(err.fields).flat()[0] ?? err.message : err.message)
+          : "Reversement impossible. Vérifie ta connexion et réessaie.";
+      showToast(msg);
     } finally {
       setBusyId(null);
     }

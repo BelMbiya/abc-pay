@@ -20,7 +20,7 @@ class TuitionFeeTest extends TestCase
             new ReceiptService,
             new \App\Services\Billing\BillingService,
             new \App\Services\Fraud\FraudService(new \App\Services\Platform\SettingsService),
-            new \App\Services\Payment\Gateways\CinetPayClient,
+            new \App\Services\Payment\Gateways\CinetPayGateway(new \App\Services\Payment\Gateways\CinetPayClient),
         );
     }
 

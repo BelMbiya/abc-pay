@@ -44,6 +44,17 @@ export function PayServiceSheet({ target, onClose }: { target: PayTarget | null;
     setMethod(m);
     setBusy(true);
     const res = await recordTransaction({ type: "service", amount, currency, channel: channelId(m), label: target?.label, reference });
+    // Passerelle CinetPay : on ouvre la page de paiement hébergée. La confirmation (et le
+    // reçu) arrivent au retour via la page de statut — pas d'affichage de succès ici.
+    if (res.redirectUrl) {
+      window.location.assign(res.redirectUrl);
+      return;
+    }
+    // Push direct (Araka) : pas de page hébergée → suivi du statut (validation sur le tél.).
+    if (res.status === "pending" && res.transactionId) {
+      window.location.assign(`/paiement/statut?tx=${res.transactionId}`);
+      return;
+    }
     setBusy(false);
     if (res.status === "echouee") {
       setReason(res.reason);

@@ -72,6 +72,8 @@ Route::prefix('v1')->group(function () {
     // Webhooks CinetPay (notify_url) — PAS de JWT, protégés par SIGNATURE (voir contrôleur).
     Route::post('webhooks/cinetpay/payment', [\App\Http\Controllers\Api\Webhooks\CinetPayController::class, 'payment'])->middleware('throttle:webhook');
     Route::post('webhooks/cinetpay/transfer', [\App\Http\Controllers\Api\Webhooks\CinetPayController::class, 'transfer'])->middleware('throttle:webhook');
+    // Callback Araka (redirectURL) — PAS de JWT, protégé par signature HMAC + re-vérif statut.
+    Route::post('webhooks/araka/payment', [\App\Http\Controllers\Api\Webhooks\ArakaController::class, 'payment'])->middleware('throttle:webhook');
 
     // Vérification d'authenticité d'un reçu (anti-fraude) — public, rate-limité.
     Route::post('receipts/verify', [ReceiptVerificationController::class, 'verify'])->middleware('throttle:verify');
@@ -82,6 +84,8 @@ Route::prefix('v1')->group(function () {
         Route::patch('me', [AuthController::class, 'updateProfile']);
         Route::get('transactions', [TransactionController::class, 'index']);
         Route::post('transactions', [TransactionController::class, 'store'])->middleware('throttle:payment');
+        // Reçu complet (jeton d'authenticité) — titulaire uniquement, pour re-générer le PDF+QR.
+        Route::get('transactions/{transaction}/receipt', [TransactionController::class, 'receipt']);
         Route::get('notifications', [NotificationController::class, 'index']);
         Route::post('notifications/read', [NotificationController::class, 'read']);
         // Support & sécurité du compte (payeur)

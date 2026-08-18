@@ -9,6 +9,7 @@ use App\Models\Establishment;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Identity\JwtService;
+use App\Services\Payment\TransferService;
 use App\Services\Payment\TuitionPaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,7 @@ class PaymentController extends Controller
 {
     public function __construct(
         private readonly TuitionPaymentService $payments,
+        private readonly TransferService $transfers,
         private readonly JwtService $jwt,
     ) {}
 
@@ -61,7 +63,10 @@ class PaymentController extends Controller
     public function status(Transaction $transaction): JsonResponse
     {
         // Fallback webhook : si encore en attente, on demande le statut réel à CinetPay.
-        $transaction = $this->payments->refreshStatus($transaction);
+        // Dispatch par type : « service » (payeur) vs Tuition (défaut).
+        $transaction = $transaction->type === 'service'
+            ? $this->transfers->refreshStatus($transaction)
+            : $this->payments->refreshStatus($transaction);
 
         return response()->json(['data' => [
             'status' => $transaction->status, // pending | confirmee | failed

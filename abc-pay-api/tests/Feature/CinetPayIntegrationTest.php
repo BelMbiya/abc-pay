@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Establishment;
 use App\Models\Settlement;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\Identity\JwtService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -30,6 +31,7 @@ class CinetPayIntegrationTest extends TestCase
         Cache::flush(); // évite un jeton mis en cache entre tests
         config([
             'cinetpay.enabled' => true,
+            'cinetpay.transfer_enabled' => true, // reversement automatique (transfert réel) activé
             'cinetpay.api_key' => 'AK', 'cinetpay.api_password' => 'AP',
             'cinetpay.base_url' => 'https://api.cinetpay.net/v1',
             'cinetpay.default_transfer_method' => 'OM',
@@ -88,6 +90,57 @@ class CinetPayIntegrationTest extends TestCase
         $this->assertDatabaseHas('transactions', ['id' => $txId, 'status' => 'confirmee']);
     }
 
+    public function test_paiement_service_via_cinetpay_pending_puis_confirme_par_statut(): void
+    {
+        Http::fake([
+            '*/oauth/login' => Http::response(['code' => 200, 'status' => 'OK', 'access_token' => 'TOK', 'token_type' => 'bearer', 'expires_in' => 86400]),
+            '*/payment/*' => Http::response(['code' => 100, 'status' => 'SUCCESS', 'merchant_transaction_id' => 'REF', 'transaction_id' => 'CP-1']), // GET statut
+            '*/payment' => Http::response(['code' => 200, 'status' => 'OK', 'payment_url' => 'https://secure.cinetpay.net/checkout/svc', 'payment_token' => 'PTOK', 'transaction_id' => 'CP-1', 'notify_token' => 'NT-1', 'merchant_transaction_id' => 'REF']), // POST init
+        ]);
+
+        $user = User::factory()->create(['name' => 'Jean Kabila', 'phone' => '+243810000700']);
+        $auth = ['Authorization' => 'Bearer '.app(JwtService::class)->issueAccess($user)];
+
+        // Init : transaction de service en attente + URL de paiement (opérateur verrouillé).
+        $res = $this->postJson('/api/v1/transactions', [
+            'type' => 'service', 'amount' => 15, 'currency' => 'USD', 'channel' => 'mpesa',
+            'label' => 'SNEL Électricité', 'reference' => 'CPT-123',
+        ], $auth)->assertCreated();
+
+        $txId = $res->json('data.transaction.id');
+        $this->assertSame('pending', $res->json('data.transaction.status'));
+        $this->assertSame('https://secure.cinetpay.net/checkout/svc', $res->json('data.payment_url'));
+
+        $tx = Transaction::find($txId);
+        $this->assertSame('cinetpay', $tx->gateway);
+        $this->assertSame('service', $tx->type);
+        $this->assertNotNull($tx->gateway_ref);
+
+        // PAGE DE RETOUR (vérif active) : confirme via le STATUT CinetPay (dispatch par type).
+        $status = $this->getJson("/api/v1/payments/{$txId}/status")->assertOk();
+        $this->assertSame('confirmee', $status->json('data.status'));
+        $this->assertDatabaseHas('transactions', ['id' => $txId, 'status' => 'confirmee', 'type' => 'service']);
+        $this->assertDatabaseHas('receipts', ['transaction_id' => $txId]);
+    }
+
+    public function test_numero_incoherent_avec_operateur_est_refuse_avant_cinetpay(): void
+    {
+        Http::fake(); // aucun appel ne doit partir (validation avant CinetPay)
+
+        $e = Establishment::factory()->create(['fees' => ['Minerval'], 'presets' => [250], 'currency' => 'USD']);
+        // Canal AIRTEL mais numéro M-Pesa (préfixe 81) → incohérence détectée localement.
+        $payload = $this->paymentPayload($e);
+        $payload['channel'] = 'airtel';
+        $payload['payer_phone'] = '+243815858586';
+
+        $res = $this->postJson('/api/v1/payments', $payload)->assertStatus(422);
+        $body = json_encode($res->json(), JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('Airtel', $body);
+        $this->assertStringContainsString('opérateur', $body);
+        $this->assertDatabaseCount('transactions', 0); // rollback : rien de créé
+        Http::assertNothingSent(); // zéro appel CinetPay gaspillé
+    }
+
     public function test_erreur_cinetpay_est_remontee_lisiblement(): void
     {
         // CinetPay refuse (ex. IP non whitelistée : code 2011 NOT_ALLOWED).
@@ -98,10 +151,13 @@ class CinetPayIntegrationTest extends TestCase
 
         $e = Establishment::factory()->create(['fees' => ['Minerval'], 'presets' => [250], 'currency' => 'CDF']);
 
-        // Le message CinetPay remonte (422), PAS un 500 opaque, et aucune transaction fantôme.
+        // Le motif CinetPay remonte (422), PAS un 500 opaque, et aucune transaction fantôme.
+        // Cas IP non whitelistée (2011 / NOT_ALLOWED) → message ACTIONNABLE (whitelist IP).
         $res = $this->postJson('/api/v1/payments', $this->paymentPayload($e))->assertStatus(422);
-        $this->assertStringContainsString('CinetPay', json_encode($res->json()));
-        $this->assertStringContainsString('withlisted', json_encode($res->json()));
+        $body = json_encode($res->json(), JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('CinetPay', $body);
+        $this->assertStringContainsString('IP publique', $body);
+        $this->assertStringContainsString('autorisée', $body);
         $this->assertDatabaseCount('transactions', 0);
     }
 
@@ -133,6 +189,29 @@ class CinetPayIntegrationTest extends TestCase
         $this->postJson('/api/v1/webhooks/cinetpay/transfer', ['merchant_transaction_id' => $settlement->id, 'status' => 'SUCCESS', 'notify_token' => 'NT-1'])
             ->assertOk();
         $this->assertDatabaseHas('settlements', ['id' => $settlement->id, 'status' => 'paid']);
+    }
+
+    public function test_reversement_mode_enregistrement_quand_transfert_auto_off(): void
+    {
+        // Reversement automatique OFF (défaut) : acte comptable → « payé » immédiatement,
+        // AUCUN appel CinetPay, et le numéro de reversement n'est PAS requis.
+        config(['cinetpay.transfer_enabled' => false]);
+        Http::fake();
+
+        $e = Establishment::factory()->create(['currency' => 'USD']); // pas de payout_phone
+        Transaction::create([
+            'establishment_id' => $e->id, 'student_name' => 'Grace', 'student_matricule' => 'M1', 'fee_type' => 'Minerval',
+            'channel' => 'mpesa', 'amount' => 1600, 'service_fee' => 0, 'commission' => 24, 'total' => 1600,
+            'currency' => 'USD', 'status' => 'confirmee', 'confirmed_at' => now(),
+        ]);
+
+        $this->postJson("/api/v1/admin/establishments/{$e->id}/settlements", ['reference' => 'REV-X'], $this->adminAuth())
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'paid');
+
+        $settlement = Settlement::where('establishment_id', $e->id)->firstOrFail();
+        $this->assertNotNull($settlement->paid_at);
+        Http::assertNothingSent(); // aucun transfert CinetPay en mode enregistrement
     }
 
     public function test_reversement_sans_numero_est_refuse(): void

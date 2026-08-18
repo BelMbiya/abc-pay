@@ -67,7 +67,7 @@ export default function PaiementStatutPage() {
         <>
           <Loader2 className="size-12 animate-spin text-blue-600" strokeWidth={2} />
           <h1 className="mt-5 font-display text-[20px] font-extrabold text-ink">Vérification du paiement…</h1>
-          <p className="mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-gray-500">On confirme la transaction auprès de l&apos;opérateur. Ne ferme pas cette page.</p>
+          <p className="mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-gray-500">Si ton opérateur te le demande, valide le paiement sur ton téléphone. Ne ferme pas cette page.</p>
         </>
       ) : view === "success" ? (
         <>

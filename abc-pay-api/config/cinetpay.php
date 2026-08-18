@@ -22,6 +22,12 @@ return [
     'default_payment_method' => env('CINETPAY_PAYMENT_METHOD'),
     'default_transfer_method' => env('CINETPAY_TRANSFER_METHOD'),
 
+    // REVERSEMENT AUTOMATIQUE (payout via CinetPay Transfer). INDÉPENDANT de l'encaissement :
+    // l'API Transfer exige une activation séparée + un solde approvisionné. OFF par défaut →
+    // le reversement est un acte comptable (marqué « payé » + notifié), le mouvement d'argent
+    // étant fait hors-bande. ON → transfert RÉEL (exige `payout_phone` sur l'établissement).
+    'transfer_enabled' => (bool) env('CINETPAY_TRANSFER_ENABLED', false),
+
     // Correspondance canal abc pay → code opérateur CinetPay. VERROUILLE l'opérateur sur
     // la page CinetPay pour qu'il corresponde au canal choisi par le payeur (sinon
     // l'utilisateur peut choisir un opérateur ≠ de son numéro → échec garanti). Codes RDC

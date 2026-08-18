@@ -8,7 +8,10 @@ use App\Models\Transaction;
 use App\Services\Billing\BillingService;
 use App\Services\Document\ReceiptService;
 use App\Services\Fraud\FraudService;
-use App\Services\Payment\Gateways\CinetPayClient;
+use App\Services\Payment\Gateways\Contracts\PaymentGateway;
+use App\Services\Payment\Gateways\Contracts\PaymentRequest;
+use App\Services\Payment\Gateways\Contracts\PaymentState;
+use App\Services\Payment\Gateways\Exceptions\GatewayException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -33,7 +36,7 @@ class TuitionPaymentService
         private readonly ReceiptService $receipts,
         private readonly BillingService $billing,
         private readonly FraudService $fraud,
-        private readonly CinetPayClient $cinetpay,
+        private readonly PaymentGateway $gateway,
     ) {}
 
     /**
@@ -151,8 +154,8 @@ class TuitionPaymentService
                 'commission' => $commission,
                 'total' => $amount, // le payeur paie exactement le montant
                 'currency' => $establishment->currency ?: app(\App\Services\Platform\SettingsService::class)->currency(),
-                'status' => 'pending', // confirmé par confirmTransaction (mock) ou le webhook CinetPay
-                'gateway' => $this->cinetpay->enabled() ? 'cinetpay' : null,
+                'status' => 'pending', // confirmé par confirmTransaction (mock) ou le webhook passerelle
+                'gateway' => $this->gateway->enabled() ? $this->gateway->name() : null,
                 'reference' => $data['reference'] ?? null,
                 'idempotency_key' => $idempotencyKey,
                 ]);
@@ -171,76 +174,47 @@ class TuitionPaymentService
             }
 
             // SANS passerelle (démo) : confirmation immédiate (comportement historique).
-            if (! $this->cinetpay->enabled()) {
+            if (! $this->gateway->enabled()) {
                 $this->confirmTransaction($transaction);
 
                 return $this->present($transaction->fresh('receipt'));
             }
 
-            // Passerelle CinetPay (Aurore) : réf marchande COURTE (≤30) + initialisation du
-            // paiement web. Le statut réel sera posé par le webhook. On renvoie payment_url.
-            $merchantRef = 'ABCP'.strtoupper(Str::random(20)); // 24 caractères, unique
+            // AVEC passerelle : initialisation de l'encaissement (via l'abstraction). Le
+            // statut réel est posé au retour / par le webhook. `redirectUrl` peut être NULL
+            // (push direct type Araka) → le front va alors directement au *polling*.
+            $merchantRef = 'ABCP'.strtoupper(Str::random(12)); // 16 car. (≤20 Araka, ≤30 CinetPay)
             [$firstName, $lastName] = $this->splitClientName($data['payer_name'] ?? $data['student_name']);
             $statutUrl = config('cinetpay.front_url').'/paiement/statut?tx='.$transaction->id;
 
             try {
-                $init = $this->cinetpay->initPayment(array_filter([
-                    'currency' => $transaction->currency,     // DOIT = devise du compte CinetPay
-                    'payment_method' => $this->resolvePaymentMethod($data['channel']),
-                    'merchant_transaction_id' => $merchantRef,
-                    'amount' => (int) round($amount),
-                    'lang' => 'fr',
-                    'designation' => 'Scolarite - '.$data['fee_type'],
-                    'client_email' => $data['payer_email'] ?? 'paiement@abcpay.cd',
-                    'client_first_name' => $firstName,
-                    'client_last_name' => $lastName,
-                    'client_phone_number' => $data['payer_phone'] ?? null,
-                    'success_url' => $statutUrl,
-                    'failed_url' => $statutUrl,
-                    'notify_url' => config('cinetpay.notify_base').'/api/v1/webhooks/cinetpay/payment',
-                ], fn ($v) => $v !== null && $v !== ''));
-            } catch (\Illuminate\Http\Client\RequestException $e) {
-                // Erreur RENVOYÉE par CinetPay (IP non autorisée, clés invalides, devise…) :
-                // on la remonte lisiblement au lieu d'un « erreur interne » opaque.
-                $body = (array) ($e->response?->json() ?? []);
-                $reason = $body['description'] ?? $body['message'] ?? 'passerelle indisponible, réessaie plus tard.';
-                throw ValidationException::withMessages(['payment' => 'Paiement refusé par CinetPay : '.$reason]);
+                $init = $this->gateway->initPayment(new PaymentRequest(
+                    merchantRef: $merchantRef,
+                    amount: (int) round($amount),
+                    currency: $transaction->currency,   // DOIT = devise du compte passerelle
+                    channel: $data['channel'],
+                    designation: 'Scolarite - '.$data['fee_type'],
+                    clientEmail: $data['payer_email'] ?? 'paiement@abcpay.cd',
+                    clientFirstName: $firstName,
+                    clientLastName: $lastName,
+                    clientPhone: $data['payer_phone'] ?? null,
+                    successUrl: $statutUrl,
+                    failedUrl: $statutUrl,
+                    notifyUrl: config('cinetpay.notify_base').'/api/v1/webhooks/'.$this->gateway->name().'/payment',
+                ));
+            } catch (GatewayException $e) {
+                // Refus passerelle (message déjà lisible) → 422, pas de transaction fantôme.
+                throw ValidationException::withMessages(['payment' => $e->getMessage()]);
             }
 
             $transaction->forceFill([
-                'gateway_ref' => $merchantRef,
-                'payment_token' => $init['payment_token'] ?? null,
-                'notify_token' => $init['notify_token'] ?? null,
+                'gateway_ref' => $init->reference,
+                'payment_token' => $init->paymentToken,
+                'notify_token' => $init->notifyToken,
             ])->save();
 
-            // Sans URL de redirection, on ne peut pas envoyer le payeur payer : on ÉCHOUE
-            // clairement plutôt que d'afficher un faux « réussi ». CinetPay renvoie souvent
-            // la raison RÉELLE dans `details` (HTTP 200, ex. INVALID_PARAMS) — on la remonte.
-            $paymentUrl = $init['payment_url'] ?? null;
-            if (! $paymentUrl) {
-                $details = (array) ($init['details'] ?? []);
-                $reason = $details['message'] ?? "lien de paiement non fourni";
-                if (! empty($details['errors']) && is_array($details['errors'])) {
-                    $first = collect($details['errors'])->flatten()->first();
-                    $reason = $first ?: $reason;
-                }
-                throw ValidationException::withMessages(['payment' => 'CinetPay : '.$reason]);
-            }
-
-            return $this->present($transaction) + ['payment_url' => $paymentUrl];
+            return $this->present($transaction) + ['payment_url' => $init->redirectUrl];
         });
-    }
-
-    /**
-     * Traduit le canal abc pay (mpesa/airtel/orange…) en code opérateur CinetPay, afin de
-     * VERROUILLER l'opérateur sur la page de paiement (cohérence numéro ↔ opérateur exigée
-     * par CinetPay). Repli sur la méthode par défaut si le canal n'est pas mappé.
-     */
-    private function resolvePaymentMethod(string $channel): ?string
-    {
-        $map = (array) config('cinetpay.method_map', []);
-
-        return $map[$channel] ?? config('cinetpay.default_payment_method');
     }
 
     /** Découpe un nom complet en prénom/nom, en garantissant le minimum de 2 caractères exigé par CinetPay. */
@@ -268,22 +242,22 @@ class TuitionPaymentService
      */
     public function refreshStatus(Transaction $transaction): Transaction
     {
-        if ($transaction->status !== 'pending' || $transaction->gateway !== 'cinetpay'
-            || ! $this->cinetpay->enabled() || ! $transaction->gateway_ref) {
+        if ($transaction->status !== 'pending' || $transaction->gateway !== $this->gateway->name()
+            || ! $this->gateway->enabled() || ! $transaction->gateway_ref) {
             return $transaction;
         }
 
         try {
-            // Statut AUTORITAIRE via CinetPay (jamais le corps du webhook). Sert aussi de
-            // confirmation en LOCAL quand le webhook ne peut pas joindre la machine.
-            $status = strtoupper((string) ($this->cinetpay->checkPayment($transaction->gateway_ref)['status'] ?? ''));
+            // Statut AUTORITAIRE via la passerelle (jamais le corps du webhook). Sert aussi
+            // de confirmation en LOCAL quand le webhook ne peut pas joindre la machine.
+            $state = $this->gateway->checkPayment($transaction->gateway_ref);
         } catch (\Throwable) {
             return $transaction; // réseau indisponible : on retentera au prochain appel
         }
 
-        if (in_array($status, ['SUCCESS', 'SUCCES', 'ACCEPTED', 'COMPLETED'], true)) {
+        if ($state === PaymentState::Success) {
             $this->confirmTransaction($transaction);
-        } elseif ($status === 'FAILED') {
+        } elseif ($state === PaymentState::Failed) {
             $transaction->forceFill(['status' => 'failed'])->save();
         }
 
