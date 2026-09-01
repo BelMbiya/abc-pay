@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
 use App\Models\EstablishmentDocument;
+use App\Models\EstablishmentStaff;
+use App\Models\User;
 use App\Services\Tenancy\EstablishmentDocuments;
 use App\Services\Tenancy\EstablishmentDocumentService;
 use Illuminate\Http\JsonResponse;
@@ -21,10 +23,44 @@ class EstablishmentDocumentAdminController extends Controller
 {
     public function __construct(private readonly EstablishmentDocumentService $documents) {}
 
-    /** Catalogue + pièces fournies + complétude. */
-    public function index(Establishment $establishment): JsonResponse
+    /** Catalogue + pièces fournies + complétude + identité (KYC) du responsable. */
+    public function index(Request $request, Establishment $establishment): JsonResponse
     {
-        return response()->json(['data' => $this->documents->overview($establishment)]);
+        $data = $this->documents->overview($establishment);
+
+        // Le bloc « responsable » (KYC : nom/téléphone/statut) n'est exposé qu'aux admins
+        // habilités à la revue KYC — un admin « establishments.manage » seul ne le voit pas.
+        $admin = $request->user();
+        $data['director'] = ($admin instanceof \App\Models\Admin && $admin->hasPermission('kyc.review'))
+            ? $this->director($establishment)
+            : null;
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Responsable (compte « direction ») + son statut KYC — pour que l'admin puisse
+     * confirmer/modifier l'identité MÊME si le responsable n'a rien soumis via la plateforme
+     * (vérification hors-ligne). Décision posée via `POST /admin/kyc/{user}/decide`.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function director(Establishment $establishment): ?array
+    {
+        $staff = EstablishmentStaff::where('establishment_id', $establishment->id)
+            ->where('role', 'direction')->first();
+        if (! $staff) {
+            return null;
+        }
+        $user = User::find($staff->user_id);
+
+        return [
+            'user_id' => $staff->user_id,
+            'name' => $user?->name,
+            'phone' => $user?->phone,
+            'kyc_required' => (bool) $staff->kyc_required,
+            'kyc_status' => $user?->kyc_status ?? 'none',
+        ];
     }
 
     /** Crée/actualise une pièce (numéro / statut de revue). */

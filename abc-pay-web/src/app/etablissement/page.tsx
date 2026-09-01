@@ -3,14 +3,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { Wallet, TrendingUp, Percent, Banknote, RefreshCw } from "lucide-react";
 import { StatCard, PageHeader } from "@/components/backoffice/StatCard";
+import { Chip, ChipGroup } from "@/components/ui";
 import { fmt } from "@/lib/api";
 import { money } from "@/lib/money";
-import { fetchStaffDashboard, CHANNEL_COLORS, type EstablishmentDashboard } from "@/lib/dashboard-api";
+import { fetchStaffDashboard, CHANNEL_COLORS, DASHBOARD_PERIODS, type DashboardPeriod, type EstablishmentDashboard } from "@/lib/dashboard-api";
 import { getStaffUser, updateStaffUser } from "@/lib/staff-auth";
+
+const PERIOD_LABEL: Record<DashboardPeriod, string> = {
+  today: "aujourd'hui",
+  week: "7 derniers jours",
+  month: "30 derniers jours",
+  all: "depuis le début",
+};
 
 export default function DashboardPage() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [d, setD] = useState<EstablishmentDashboard | null>(null);
+  const [period, setPeriod] = useState<DashboardPeriod>("today");
   const [estName, setEstName] = useState<string | null>(null);
 
   // Nom de l'établissement connecté (session locale → repli, corrige les anciennes sessions).
@@ -29,20 +38,23 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setState("loading");
     try {
-      setD(await fetchStaffDashboard());
+      setD(await fetchStaffDashboard(period));
       setState("ready");
     } catch {
       setState("error");
     }
-  }, []);
+  }, [period]);
 
+  // Charge (et recharge à chaque changement de période).
   useEffect(() => {
     let active = true;
-    fetchStaffDashboard().then((r) => active && (setD(r), setState("ready"))).catch(() => active && setState("error"));
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- indicateur de chargement au changement de période */
+    setState("loading");
+    fetchStaffDashboard(period).then((r) => active && (setD(r), setState("ready"))).catch(() => active && setState("error"));
     return () => {
       active = false;
     };
-  }, []);
+  }, [period]);
 
   const k = d?.kpis;
   const weekly = d?.weekly ?? [];
@@ -64,11 +76,20 @@ export default function DashboardPage() {
         <div className="rounded-2xl bg-gray-100 py-16 text-center text-[13px] text-gray-500">Impossible de charger le tableau de bord. <button onClick={load} className="font-bold text-blue-600">Réessayer</button></div>
       ) : (
         <>
+          {/* Filtre de période (défaut : aujourd'hui) — pilote les flux « Encaissé » / « Net à reverser » / répartition. */}
+          <div className="mb-4">
+            <ChipGroup>
+              {DASHBOARD_PERIODS.map((p) => (
+                <Chip key={p.id} selected={period === p.id} onClick={() => setPeriod(p.id)}>{p.label}</Chip>
+              ))}
+            </ChipGroup>
+          </div>
+
           <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
             <StatCard label="Attendu" value={`${money(k?.expected ?? 0)}`} icon={Wallet} hint="Total à recouvrer" />
-            <StatCard label="Encaissé" value={`${money(k?.collected ?? 0)}`} icon={TrendingUp} hint="Paiements confirmés" />
+            <StatCard label="Encaissé" value={`${money(k?.collected ?? 0)}`} icon={TrendingUp} hint={`Confirmés — ${PERIOD_LABEL[period]}`} />
             <StatCard label="Taux de recouvrement" value={`${k?.recovery_rate ?? 0} %`} icon={Percent} tone="navy" hint={`${money(k?.remaining ?? 0)} restants`} />
-            <StatCard label="Net à reverser" value={`${money(k?.pending_net ?? 0)}`} icon={Banknote} hint="Après commission" />
+            <StatCard label="Net à reverser" value={`${money(k?.pending_net ?? 0)}`} icon={Banknote} hint={`Après commission — ${PERIOD_LABEL[period]}`} />
           </div>
 
           <div className="mt-4 grid gap-3.5 lg:grid-cols-5">

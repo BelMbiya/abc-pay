@@ -87,6 +87,11 @@ class AuthController extends Controller
     {
         try {
             $data = $this->adminAuth->login($request->validated('email'), $request->validated('password'));
+        } catch (AccountBlockedException $e) {
+            // Compte désactivé/bloqué (litige) : motif CLAIR, pas « identifiants invalides ».
+            return response()->json([
+                'error' => ['code' => 'account_blocked', 'message' => $e->getMessage()],
+            ], 403);
         } catch (InvalidCredentialsException $e) {
             return response()->json([
                 'error' => ['code' => 'invalid_credentials', 'message' => 'Identifiants invalides.'],
@@ -101,6 +106,11 @@ class AuthController extends Controller
     {
         try {
             $data = $this->staffAuth->login($request->validated('email'), $request->validated('password'));
+        } catch (AccountBlockedException $e) {
+            // Compte bloqué (litige) / établissement suspendu : motif CLAIR.
+            return response()->json([
+                'error' => ['code' => 'account_blocked', 'message' => $e->getMessage()],
+            ], 403);
         } catch (InvalidCredentialsException $e) {
             return response()->json([
                 'error' => ['code' => 'invalid_credentials', 'message' => 'Identifiants invalides.'],

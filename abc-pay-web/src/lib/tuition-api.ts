@@ -51,15 +51,17 @@ export interface TuitionPaymentResult {
  */
 export interface PaymentStatus {
   status: "pending" | "confirmee" | "failed" | "echouee";
+  type: string | null; // tuition | service | send
   receiptNumber: string | null;
 }
 
 /** Statut d'un paiement (page de retour après redirection CinetPay). */
 export async function fetchPaymentStatus(transactionId: string): Promise<PaymentStatus> {
-  const data = await api.get<{ status?: string; receipt?: { number?: string } }>(`${V1}/payments/${transactionId}/status`);
+  const data = await api.get<{ status?: string; type?: string; receipt?: { number?: string } }>(`${V1}/payments/${transactionId}/status`);
   const s = data?.status;
   return {
     status: s === "confirmee" ? "confirmee" : s === "failed" || s === "echouee" ? "failed" : "pending",
+    type: data?.type ?? null,
     receiptNumber: data?.receipt?.number ?? null,
   };
 }

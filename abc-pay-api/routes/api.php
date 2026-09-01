@@ -102,7 +102,7 @@ Route::prefix('v1')->group(function () {
     });
 
     // Super-admin abc pay — protégé par l'auth admin. Autorisation par PERMISSION (RBAC).
-    Route::middleware('admin')->prefix('admin')->group(function () {
+    Route::middleware(['admin', 'audit.admin'])->prefix('admin')->group(function () {
         // Accessibles à TOUT admin authentifié (propre compte / fil d'alertes / permissions).
         Route::patch('me', [AuthController::class, 'updateAdminProfile']);
         Route::post('password', [AuthController::class, 'changeAdminPassword'])->middleware('throttle:auth');
@@ -200,7 +200,13 @@ Route::prefix('v1')->group(function () {
             Route::get('admins', [AdminTeamController::class, 'index']);
             Route::post('admins', [AdminTeamController::class, 'store'])->middleware('throttle:auth');
             Route::patch('admins/{admin}', [AdminTeamController::class, 'update']);
+            Route::post('admins/{admin}/reset-password', [AdminTeamController::class, 'resetPassword'])->middleware('throttle:auth');
             Route::delete('admins/{admin}', [AdminTeamController::class, 'destroy']);
+        });
+
+        // Journal d'audit des actions admin (LECTURE) — super-admin uniquement (audit.view).
+        Route::middleware('admin.can:audit.view')->group(function () {
+            Route::get('audit-logs', [\App\Http\Controllers\Api\Admin\AdminAuditController::class, 'index']);
         });
     });
 
@@ -208,8 +214,12 @@ Route::prefix('v1')->group(function () {
     Route::middleware('staff')->prefix('staff')->group(function () {
         Route::get('fee-types', [FeeTypeController::class, 'index']);
         Route::post('fee-types', [FeeTypeController::class, 'store']);
+        Route::patch('fee-types/{feeType}', [FeeTypeController::class, 'update']);
+        Route::delete('fee-types/{feeType}', [FeeTypeController::class, 'destroy']);
         Route::get('fee-schedules', [FeeScheduleController::class, 'index']);
         Route::post('fee-schedules', [FeeScheduleController::class, 'store']);
+        Route::patch('fee-schedules/{feeSchedule}', [FeeScheduleController::class, 'update']);
+        Route::delete('fee-schedules/{feeSchedule}', [FeeScheduleController::class, 'destroy']);
         Route::get('learners', [LearnerController::class, 'index']);
         Route::post('learners', [LearnerController::class, 'store']);
         Route::post('learners/import', [LearnerController::class, 'import'])->middleware('throttle:payment');

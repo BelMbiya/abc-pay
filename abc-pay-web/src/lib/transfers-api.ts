@@ -12,6 +12,7 @@ export interface TransferInput {
   currency?: string;
   counterparty_name?: string;
   counterparty_phone?: string;
+  payer_phone?: string; // numéro Mobile Money du payeur (cible du push direct)
   label?: string;
   reference?: string;
 }

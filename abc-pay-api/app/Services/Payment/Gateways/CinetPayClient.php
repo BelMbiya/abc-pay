@@ -43,10 +43,15 @@ class CinetPayClient
         return (bool) config('cinetpay.verify_ssl', true);
     }
 
-    /** Requête HTTP de base (JSON + vérification TLS configurée). */
+    /** Requête HTTP de base (JSON + vérification TLS + proxy à IP fixe optionnel). */
     private function http(): PendingRequest
     {
-        return Http::withOptions(['verify' => $this->verify()])->acceptJson();
+        $options = ['verify' => $this->verify()];
+        if ($proxy = config('cinetpay.http_proxy')) {
+            $options['proxy'] = $proxy; // sortie via une IP fixe whitelistée (anti-2011)
+        }
+
+        return Http::withOptions($options)->acceptJson();
     }
 
     /** Jeton d'accès (Bearer), mis en cache (expires_in = 86400 s). */

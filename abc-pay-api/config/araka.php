@@ -28,6 +28,11 @@ return [
     'hmac_key' => env('ARAKA_HMAC_KEY'),
     'callback_mode' => env('ARAKA_CALLBACK_MODE'), // '2' pour activer HMAC, sinon vide
 
+    // REVERSEMENT AUTOMATIQUE (décaissement via `/api/pay/sendmobilemoney`). Activation
+    // SÉPARÉE de l'encaissement par l'équipe technique Araka. OFF par défaut → le reversement
+    // est un acte comptable (marqué « payé »). ON → décaissement RÉEL (exige `payout_phone`).
+    'transfer_enabled' => (bool) env('ARAKA_TRANSFER_ENABLED', false),
+
     'token_ttl' => (int) env('ARAKA_TOKEN_TTL', 3000),
 
     // Vérification TLS (même bundle CA embarqué que CinetPay sur Windows).

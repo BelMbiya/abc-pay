@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu, X, LogOut, KeyRound } from "lucide-react";
 import { AdminSidebar, NAV } from "./AdminSidebar";
 import { AdminNotificationBell } from "./AdminNotificationBell";
 import { ToastProvider, ConfirmProvider } from "@/components/ui";
-import { adminCan } from "@/lib/admin-auth";
+import { adminCan, clearAdminToken } from "@/lib/admin-auth";
 import { cn } from "@/lib/cn";
 
 /** Coquille super-admin abc pay — même disposition (rail desktop / drawer mobile). */
@@ -16,6 +16,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [nav, setNav] = useState(NAV);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- filtre RBAC client (localStorage)
   useEffect(() => setNav(NAV.filter((i) => adminCan(i.perm))), []);
+  const router = useRouter();
+  const logout = () => {
+    clearAdminToken();
+    router.replace("/admin-connexion");
+  };
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/admin" ? pathname === href : pathname.startsWith(href));
 
@@ -96,6 +101,23 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
+            {/* Mon compte + Déconnexion — toujours disponibles, quel que soit le rôle. */}
+            <Link
+              href="/admin/compte"
+              onClick={() => setOpen(false)}
+              className="mt-2 flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] font-semibold text-ink transition-colors hover:bg-gray-100"
+            >
+              <KeyRound className="size-4 text-gray-500" strokeWidth={2} />
+              Mon compte
+            </Link>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); logout(); }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] font-semibold text-red transition-colors hover:bg-red-50"
+            >
+              <LogOut className="size-4" strokeWidth={2} />
+              Se déconnecter
+            </button>
           </nav>
         </div>
       </div>

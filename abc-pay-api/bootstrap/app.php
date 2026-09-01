@@ -44,6 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'staff' => \App\Http\Middleware\StaffAuthenticate::class,
             'admin' => \App\Http\Middleware\AdminAuthenticate::class,
             'admin.can' => \App\Http\Middleware\AdminPermission::class,
+            'audit.admin' => \App\Http\Middleware\AuditAdminActions::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -6,6 +6,8 @@ use App\Services\Payment\Gateways\Contracts\PaymentGateway;
 use App\Services\Payment\Gateways\Contracts\PaymentInit;
 use App\Services\Payment\Gateways\Contracts\PaymentRequest;
 use App\Services\Payment\Gateways\Contracts\PaymentState;
+use App\Services\Payment\Gateways\Contracts\TransferRequest;
+use App\Services\Payment\Gateways\Contracts\TransferResult;
 use App\Services\Payment\Gateways\Exceptions\GatewayException;
 use Illuminate\Http\Client\RequestException;
 
@@ -100,6 +102,85 @@ class ArakaGateway implements PaymentGateway
             in_array($desc, ['APPROVED', 'SUCCESS', 'COMPLETED'], true) => PaymentState::Success,
             in_array($desc, ['DECLINED', 'FAILED', 'REJECTED'], true) => PaymentState::Failed,
             default => PaymentState::Pending,
+        };
+    }
+
+    public function payoutEnabled(): bool
+    {
+        // Endpoint `sendmobilemoney` : activation SÉPARÉE par l'équipe technique Araka.
+        // OFF → reversement = acte comptable (marqué « payé »).
+        return $this->client->enabled() && (bool) config('araka.transfer_enabled');
+    }
+
+    public function sendTransfer(TransferRequest $r): TransferResult
+    {
+        // Décaissement direct : sans numéro (walletID), Araka n'a aucune cible.
+        if (! $r->phone) {
+            throw new GatewayException('Un numéro mobile money (bénéficiaire) est requis pour le reversement Araka.');
+        }
+
+        // `transactionReference` Araka ≤ 20 : l'id du Settlement (UUID, 36) est trop long →
+        // référence courte déterministe (hex de l'UUID tronqué). Le décaissement étant
+        // synchrone, cette référence n'a pas à être matchée par un webhook.
+        $wireRef = 'S'.substr(preg_replace('/[^A-Za-z0-9]/', '', $r->reference), 0, 19);
+
+        $payload = [
+            'order' => array_filter([
+                'customerFullName' => $r->beneficiaryName,
+                'customerPhoneNumber' => $r->phone,
+                'customerEmailAddress' => $r->email,
+                'transactionReference' => $wireRef,
+                'amount' => round($r->amount, 2),
+                'currency' => $r->currency,          // USD | CDF
+            ], fn ($v) => $v !== null && $v !== ''),
+            'destination' => [
+                'provider' => $this->payoutProvider($r->channel),   // MPESA | AIRTEL | ORANGE | AFRIMONEY
+                'walletID' => $r->phone,                            // MSISDN +243…
+            ],
+        ];
+
+        try {
+            $res = $this->client->sendMobileMoney($payload);
+        } catch (RequestException $e) {
+            $body = (array) ($e->response?->json() ?? []);
+            $reason = $body['statusDescription'] ?? $body['message'] ?? 'passerelle indisponible, réessaie plus tard.';
+            throw new GatewayException('Reversement refusé par Araka : '.$reason);
+        }
+
+        // 200 SUCCESS = décaissé ; 202 ACCEPTED/PENDING = accepté (en cours) ; sinon refus.
+        $code = (string) ($res['statusCode'] ?? '');
+        $desc = strtoupper((string) ($res['statusDescription'] ?? ''));
+        $accepted = in_array($code, ['200', '202'], true)
+            || in_array($desc, ['SUCCESS', 'APPROVED', 'ACCEPTED', 'PENDING'], true);
+        if (! $accepted) {
+            throw new GatewayException('Reversement refusé par Araka : '.($res['statusDescription'] ?? 'refusé'));
+        }
+
+        $done = $code === '200' || in_array($desc, ['SUCCESS', 'APPROVED', 'COMPLETED'], true);
+
+        return new TransferResult(
+            state: $done ? PaymentState::Success : PaymentState::Pending,
+            providerRef: $res['transactionId'] ?? null,
+            notifyToken: null,
+        );
+    }
+
+    /**
+     * Opérateur de réception Araka (MPESA/AIRTEL/ORANGE/AFRIMONEY) à partir du
+     * payout_method de l'établissement. Accepte le canal abc pay (mpesa) COMME un code
+     * CinetPay hérité (MPESA_CD, OM_CD, FLOOZ…) — normalisation tolérante.
+     */
+    private function payoutProvider(?string $channel): string
+    {
+        $c = strtolower(trim((string) $channel));
+        $c = (string) preg_replace('/[_-]?cd$/', '', $c); // MPESA_CD → mpesa, om_cd → om
+
+        return match ($c) {
+            'mpesa', 'vodacom', 'mpesacd' => 'MPESA',
+            'airtel', 'airtelcd', 'airtelmoney' => 'AIRTEL',
+            'orange', 'om', 'orangemoney' => 'ORANGE',
+            'africell', 'afrimoney', 'flooz' => 'AFRIMONEY',
+            default => strtoupper($c !== '' ? $c : 'MPESA'),
         };
     }
 }

@@ -40,6 +40,17 @@ export function SendSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setMethod(m);
     setBusy(true);
     const res = await recordTransaction({ type: "send", amount, currency, channel: channelId(m), counterparty_phone: phone, counterparty_name: name.trim() || undefined });
+    // Passerelle CinetPay (page hébergée) : on ouvre la page ; la suite au retour de statut.
+    if (res.redirectUrl) {
+      window.location.assign(res.redirectUrl);
+      return;
+    }
+    // Push direct (Araka) : l'expéditeur valide sur son téléphone → suivi du statut, qui
+    // déclenche l'envoi réel au destinataire (jambe 2).
+    if (res.status === "pending" && res.transactionId) {
+      window.location.assign(`/paiement/statut?tx=${res.transactionId}`);
+      return;
+    }
     setBusy(false);
     if (res.status === "echouee") {
       setReason(res.reason);

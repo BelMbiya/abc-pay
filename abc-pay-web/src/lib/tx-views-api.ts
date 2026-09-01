@@ -180,6 +180,8 @@ export interface Settlement {
   net: number;
   count: number;
   status: string; // pending | paid
+  gateway?: string | null; // araka | cinetpay | null (démo)
+  transfer_id?: string | null; // id du transfert côté passerelle (traçabilité portail)
 }
 
 export interface SettlementData {

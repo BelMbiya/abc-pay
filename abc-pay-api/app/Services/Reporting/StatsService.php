@@ -24,34 +24,65 @@ class StatsService
 
     public function __construct(private readonly SettingsService $settings) {}
 
-    /** Tableau de bord d'un établissement (dans SA devise). */
-    public function forEstablishment(string $establishmentId): array
+    /** Périodes de filtrage des FLUX (encaissé/net/canaux). Défaut = aujourd'hui. */
+    public const PERIODS = ['today', 'week', 'month', 'all'];
+
+    /**
+     * Tableau de bord d'un établissement (dans SA devise).
+     *
+     * `$period` filtre les FLUX (Encaissé, Net à reverser, répartition par canal) :
+     * today | week (7 j) | month (30 j) | all. Les indicateurs d'ÉTAT (Attendu, Taux de
+     * recouvrement — dérivés du barème/dettes) restent CUMULATIFS (indépendants de la
+     * période), et la tendance hebdomadaire reste une série (8 semaines).
+     */
+    public function forEstablishment(string $establishmentId, string $period = 'today'): array
     {
         $base = Establishment::whereKey($establishmentId)->value('currency') ?: 'USD';
+        $period = in_array($period, self::PERIODS, true) ? $period : 'today';
 
-        $txs = Transaction::query()
+        // Tous les encaissements confirmés (pour l'état cumulatif + la tendance hebdo).
+        $allTxs = Transaction::query()
             ->where('establishment_id', $establishmentId)->where('status', 'confirmee')
             ->get(['amount', 'commission', 'channel', 'currency', 'created_at']);
 
-        $collected = $this->sumBase($txs, 'amount', $base);
-        $commission = $this->sumBase($txs, 'commission', $base);
+        // Sous-ensemble de la PÉRIODE pour les flux.
+        $periodTxs = $this->filterByPeriod($allTxs, $period);
+
+        $collected = $this->sumBase($periodTxs, 'amount', $base);
+        $commission = $this->sumBase($periodTxs, 'commission', $base);
         $expected = round((float) FeeItem::where('establishment_id', $establishmentId)->sum('amount_due'), 2);
         $paid = round((float) FeeItem::where('establishment_id', $establishmentId)->sum('amount_paid'), 2);
         $recovery = $expected > 0 ? round($paid / $expected * 100, 1) : 0.0;
 
         return [
             'base_currency' => $base,
+            'period' => $period,
             'kpis' => [
-                'expected' => $expected,
-                'collected' => $collected,
-                'recovery_rate' => $recovery,
-                'remaining' => round($expected - $paid, 2),
-                'pending_net' => round($collected - $commission, 2),
+                'expected' => $expected,                         // cumulatif (état)
+                'collected' => $collected,                       // flux (période)
+                'recovery_rate' => $recovery,                    // cumulatif (état)
+                'remaining' => round($expected - $paid, 2),      // cumulatif (état)
+                'pending_net' => round($collected - $commission, 2), // flux (période)
             ],
-            'weekly' => $this->weekly($txs, $base),
-            'by_channel' => $this->channelBreakdown($txs, $base, $collected),
+            'weekly' => $this->weekly($allTxs, $base),           // tendance (8 semaines)
+            'by_channel' => $this->channelBreakdown($periodTxs, $base, $collected),
             'unpaid' => $this->topUnpaid($establishmentId),
         ];
+    }
+
+    /** Restreint une collection de transactions à la période demandée (par `created_at`). */
+    private function filterByPeriod(Collection $txs, string $period): Collection
+    {
+        if ($period === 'all') {
+            return $txs;
+        }
+        $from = match ($period) {
+            'week' => Carbon::now()->subDays(7),
+            'month' => Carbon::now()->subDays(30),
+            default => Carbon::now()->startOfDay(), // today
+        };
+
+        return $txs->filter(fn (Transaction $t) => $t->created_at !== null && $t->created_at->greaterThanOrEqualTo($from));
     }
 
     /** Tableau de bord plateforme (super-admin) — tout converti en devise plateforme. */

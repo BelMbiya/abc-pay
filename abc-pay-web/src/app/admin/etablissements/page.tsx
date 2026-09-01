@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Plus, Settings2, RefreshCw, Ban, CheckCircle2, Banknote } from "lucide-react";
+import { Search, Plus, Settings2, RefreshCw, Ban, CheckCircle2, Banknote, ShieldCheck } from "lucide-react";
 import { Button, StatusPill, useToast, useConfirm, Pagination, usePagination } from "@/components/ui";
 import { PageHeader } from "@/components/backoffice/StatCard";
 import { OnboardEstablishmentSheet } from "@/components/admin/OnboardEstablishmentSheet";
 import { ConfigureEstablishmentSheet } from "@/components/admin/ConfigureEstablishmentSheet";
+import { EstablishmentVerificationSheet } from "@/components/admin/EstablishmentVerificationSheet";
 import { fetchAdminEstablishments, updateEstablishment, fetchEstablishmentSettlements, executeSettlement, type AdminEstablishment } from "@/lib/admin-api";
 import { ApiError } from "@/lib/api";
 
@@ -15,6 +16,7 @@ export default function AdminEstablishmentsPage() {
   const [q, setQ] = useState("");
   const [onboardOpen, setOnboardOpen] = useState(false);
   const [configTarget, setConfigTarget] = useState<AdminEstablishment | null>(null);
+  const [verifyTarget, setVerifyTarget] = useState<AdminEstablishment | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [items, setItems] = useState<AdminEstablishment[]>([]);
@@ -69,7 +71,7 @@ export default function AdminEstablishmentsPage() {
       const { pending, establishment } = await fetchEstablishmentSettlements(e.id);
       const sym = establishment.currency === "CDF" ? "FC" : "$";
       if (!pending || pending.net <= 0) {
-        showToast(`Rien à reverser pour ${e.name}`);
+        showToast(`Rien à reverser pour ${e.name}`, "info");
         return;
       }
       const ok = await confirm({
@@ -80,7 +82,7 @@ export default function AdminEstablishmentsPage() {
       if (!ok) return;
       const res = await executeSettlement(e.id);
       const suffix = res.status === "pending" ? " (transfert en cours)" : "";
-      showToast(`Reversement de ${res.net.toLocaleString("fr-FR")} ${sym} effectué${suffix}`);
+      showToast(`Reversement de ${res.net.toLocaleString("fr-FR")} ${sym} effectué${suffix}`, "success");
       await load();
     } catch (err) {
       // Remonter la VRAIE raison (numéro manquant, transfert refusé…) au lieu d'un générique.
@@ -88,7 +90,7 @@ export default function AdminEstablishmentsPage() {
         err instanceof ApiError
           ? (err.fields ? Object.values(err.fields).flat()[0] ?? err.message : err.message)
           : "Reversement impossible. Vérifie ta connexion et réessaie.";
-      showToast(msg);
+      showToast(msg, "error");
     } finally {
       setBusyId(null);
     }
@@ -193,6 +195,15 @@ export default function AdminEstablishmentsPage() {
                           </button>
                           <button
                             type="button"
+                            aria-label="Vérification (KYC / KYB)"
+                            title="Vérification — identité du responsable & documents d'entreprise"
+                            onClick={() => setVerifyTarget(e)}
+                            className="flex size-8 items-center justify-center rounded-lg bg-white text-gray-700 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                          >
+                            <ShieldCheck className="size-4" strokeWidth={2} />
+                          </button>
+                          <button
+                            type="button"
                             aria-label="Reverser"
                             title="Reverser les encaissements en attente"
                             disabled={busyId === e.id}
@@ -224,6 +235,7 @@ export default function AdminEstablishmentsPage() {
 
       <OnboardEstablishmentSheet open={onboardOpen} onClose={() => setOnboardOpen(false)} onCreated={load} />
       <ConfigureEstablishmentSheet establishment={configTarget} onClose={() => setConfigTarget(null)} onSaved={load} />
+      <EstablishmentVerificationSheet establishment={verifyTarget} onClose={() => setVerifyTarget(null)} onSaved={load} />
     </div>
   );
 }

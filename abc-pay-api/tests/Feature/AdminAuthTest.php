@@ -46,8 +46,11 @@ class AdminAuthTest extends TestCase
         $admin = $this->admin();
         $admin->update(['is_active' => false]);
 
-        $this->postJson('/api/v1/auth/admin/login', ['email' => 'admin@abcpay.cd', 'password' => 'secret123'])
-            ->assertStatus(422);
+        // Identifiants BONS + compte désactivé → 403 avec motif CLAIR (pas « identifiants invalides »).
+        $res = $this->postJson('/api/v1/auth/admin/login', ['email' => 'admin@abcpay.cd', 'password' => 'secret123'])
+            ->assertStatus(403);
+        $this->assertSame('account_blocked', $res->json('error.code'));
+        $this->assertStringContainsString('désactivé', json_encode($res->json(), JSON_UNESCAPED_UNICODE));
     }
 
     public function test_endpoint_admin_exige_un_jeton_admin(): void

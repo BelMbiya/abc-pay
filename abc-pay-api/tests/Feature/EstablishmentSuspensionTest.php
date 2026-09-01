@@ -44,8 +44,11 @@ class EstablishmentSuspensionTest extends TestCase
         [$establishment] = $this->provision();
         $establishment->update(['is_active' => false]);
 
-        $this->postJson('/api/v1/auth/staff/login', ['email' => 'dir@test.cd', 'password' => 'secret123'])
-            ->assertStatus(422);
+        // Établissement suspendu → 403 avec motif CLAIR (au lieu d'« identifiants invalides »).
+        $res = $this->postJson('/api/v1/auth/staff/login', ['email' => 'dir@test.cd', 'password' => 'secret123'])
+            ->assertStatus(403);
+        $this->assertSame('account_blocked', $res->json('error.code'));
+        $this->assertStringContainsString('suspendu', json_encode($res->json(), JSON_UNESCAPED_UNICODE));
     }
 
     public function test_acces_refuse_avec_jeton_existant_si_suspendu(): void

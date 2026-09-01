@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { UserCog, Plus, Trash2 } from "lucide-react";
+import { UserCog, Plus, Trash2, KeyRound } from "lucide-react";
 import { BottomSheet, Button, StatusPill, useToast, useConfirm } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { getAdminUser } from "@/lib/admin-auth";
-import { fetchAdmins, createAdmin, updateAdmin, deleteAdmin, type AdminAccount, type AdminRoleDef } from "@/lib/admin-team-api";
+import { fetchAdmins, createAdmin, updateAdmin, deleteAdmin, resetAdminPassword, type AdminAccount, type AdminRoleDef } from "@/lib/admin-team-api";
 
 function fdate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -45,6 +45,13 @@ export default function AdminTeamPage() {
     const ok = await confirm({ title: a.is_active ? "Désactiver ce compte ?" : "Réactiver ce compte ?", message: `${a.name} (${a.email})`, confirmLabel: a.is_active ? "Désactiver" : "Réactiver", danger: a.is_active });
     if (!ok) return;
     try { await updateAdmin(a.id, { is_active: !a.is_active }); showToast("Compte mis à jour"); load(); } catch (e) { err(e); }
+  };
+
+  const resetPw = async (a: AdminAccount) => {
+    const pw = window.prompt(`Nouveau mot de passe provisoire pour ${a.name} (8 caractères min.) :`);
+    if (pw === null) return;
+    if (pw.trim().length < 8) { showToast("8 caractères minimum"); return; }
+    try { await resetAdminPassword(a.id, pw.trim()); showToast("Mot de passe réinitialisé — l'admin devra le changer à sa prochaine connexion"); load(); } catch (e) { err(e); }
   };
 
   const remove = async (a: AdminAccount) => {
@@ -103,6 +110,7 @@ export default function AdminTeamPage() {
                       {!isMe ? (
                         <div className="flex items-center justify-end gap-1.5">
                           <button type="button" onClick={() => toggleActive(a)} className={`rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold ${a.is_active ? "bg-white text-gray-700 hover:bg-gray-300/40" : "bg-green text-white hover:opacity-90"}`}>{a.is_active ? "Désactiver" : "Réactiver"}</button>
+                          <button type="button" aria-label="Réinitialiser le mot de passe" title="Réinitialiser le mot de passe" onClick={() => resetPw(a)} className="flex size-8 items-center justify-center rounded-lg bg-white text-gray-700 hover:bg-gray-300/40"><KeyRound className="size-4" strokeWidth={2.2} /></button>
                           <button type="button" aria-label="Supprimer" onClick={() => remove(a)} className="flex size-8 items-center justify-center rounded-lg bg-white text-red hover:opacity-80"><Trash2 className="size-4" strokeWidth={2.2} /></button>
                         </div>
                       ) : <span className="text-[11px] text-gray-300">—</span>}

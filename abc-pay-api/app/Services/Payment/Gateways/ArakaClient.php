@@ -78,6 +78,21 @@ class ArakaClient
     }
 
     /**
+     * REVERSEMENT (payout) : envoie de l'argent vers un wallet mobile money.
+     * `/api/pay/sendmobilemoney` — décaissement direct (order + destination provider/walletID).
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>  { transactionId, originatingTransactionId, statusCode, statusDescription }
+     */
+    public function sendMobileMoney(array $payload): array
+    {
+        return $this->auth()
+            ->post(config('araka.base_url').'/api/pay/sendmobilemoney', $payload)
+            ->throw()
+            ->json();
+    }
+
+    /**
      * Statut d'une transaction par NOTRE référence (transactionReference).
      *
      * @return array<string, mixed>  { status|statusDescription, statusCode, transactionId }

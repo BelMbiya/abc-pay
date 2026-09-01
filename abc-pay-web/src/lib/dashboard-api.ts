@@ -8,8 +8,19 @@ import { getAdminToken } from "@/lib/admin-auth";
 export interface WeekPoint { week: string; label: string; value: number }
 export interface ChannelSlice { channel: string; label: string; amount: number; pct: number }
 
+/** Période de filtrage des flux du tableau de bord établissement. */
+export type DashboardPeriod = "today" | "week" | "month" | "all";
+
+export const DASHBOARD_PERIODS: { id: DashboardPeriod; label: string }[] = [
+  { id: "today", label: "Aujourd'hui" },
+  { id: "week", label: "7 jours" },
+  { id: "month", label: "30 jours" },
+  { id: "all", label: "Tout" },
+];
+
 export interface EstablishmentDashboard {
   establishment_name?: string;
+  period?: DashboardPeriod;
   kpis: { expected: number; collected: number; recovery_rate: number; remaining: number; pending_net: number };
   weekly: WeekPoint[];
   by_channel: ChannelSlice[];
@@ -34,8 +45,8 @@ export const CHANNEL_COLORS: Record<string, string> = {
   visa: "#0F1B30",
 };
 
-export async function fetchStaffDashboard(): Promise<EstablishmentDashboard> {
-  return api.get("/api/v1/staff/dashboard", { token: getStaffToken() ?? undefined });
+export async function fetchStaffDashboard(period: DashboardPeriod = "today"): Promise<EstablishmentDashboard> {
+  return api.get(`/api/v1/staff/dashboard?period=${period}`, { token: getStaffToken() ?? undefined });
 }
 
 export async function fetchAdminDashboard(): Promise<AdminDashboard> {

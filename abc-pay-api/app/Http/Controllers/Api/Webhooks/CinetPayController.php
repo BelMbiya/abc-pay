@@ -42,7 +42,7 @@ class CinetPayController extends Controller
         $transaction = $ref ? Transaction::where('gateway_ref', $ref)->first() : null;
         if ($transaction) {
             // Re-vérif autoritaire + confirm/fail (idempotent), dispatch par type.
-            $transaction->type === 'service'
+            in_array($transaction->type, ['service', 'send'], true)
                 ? $this->transfers->refreshStatus($transaction)
                 : $this->tuition->refreshStatus($transaction);
         }

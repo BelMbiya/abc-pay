@@ -17,6 +17,7 @@ export default function PaiementStatutPage() {
   const router = useRouter();
   const [view, setView] = useState<View>("checking");
   const [receipt, setReceipt] = useState<string | null>(null);
+  const [type, setType] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -33,6 +34,7 @@ export default function PaiementStatutPage() {
       try {
         const s = await fetchPaymentStatus(tx);
         if (!active) return;
+        if (s.type) setType(s.type);
         if (s.status === "confirmee") {
           setReceipt(s.receiptNumber);
           setView("success");
@@ -61,29 +63,34 @@ export default function PaiementStatutPage() {
     };
   }, []);
 
+  // Libellé adapté au type d'opération : « envoi » (P2P) vs « paiement » (tuition / service).
+  const isSend = type === "send";
+  const noun = isSend ? "l'envoi" : "le paiement";
+  const Noun = isSend ? "Envoi" : "Paiement";
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-app flex-col items-center justify-center px-6 py-10 text-center">
       {view === "checking" ? (
         <>
           <Loader2 className="size-12 animate-spin text-blue-600" strokeWidth={2} />
-          <h1 className="mt-5 font-display text-[20px] font-extrabold text-ink">Vérification du paiement…</h1>
-          <p className="mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-gray-500">Si ton opérateur te le demande, valide le paiement sur ton téléphone. Ne ferme pas cette page.</p>
+          <h1 className="mt-5 font-display text-[20px] font-extrabold text-ink">Vérification de {noun}…</h1>
+          <p className="mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-gray-500">Si ton opérateur te le demande, valide {noun} sur ton téléphone. Ne ferme pas cette page.</p>
         </>
       ) : view === "success" ? (
         <>
           <span className="flex size-16 items-center justify-center rounded-full bg-success-bg text-green"><CheckCircle2 className="size-9" strokeWidth={2.2} /></span>
-          <h1 className="mt-5 font-display text-[20px] font-extrabold text-ink">Paiement confirmé</h1>
+          <h1 className="mt-5 font-display text-[20px] font-extrabold text-ink">{Noun} confirmé</h1>
           <p className="mt-1.5 text-[13px] text-gray-500">{receipt ? <>Reçu <b className="text-ink">{receipt}</b> disponible dans ton activité.</> : "Ton reçu est disponible dans ton activité."}</p>
           <Button className="mt-6 max-w-[260px]" onClick={() => router.replace("/activite")}>Voir mon activité</Button>
         </>
       ) : (
         <>
           <span className="flex size-16 items-center justify-center rounded-full bg-gray-100 text-red"><XCircle className="size-9" strokeWidth={2.2} /></span>
-          <h1 className="mt-5 font-display text-[20px] font-extrabold text-ink">Paiement non confirmé</h1>
-          <p className="mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-gray-500">Le paiement n&apos;a pas été confirmé, ou la confirmation prend plus de temps que prévu. Vérifie ton activité — si le montant a été débité, il y apparaîtra.</p>
+          <h1 className="mt-5 font-display text-[20px] font-extrabold text-ink">{Noun} non confirmé</h1>
+          <p className="mt-1.5 max-w-[34ch] text-[13px] leading-relaxed text-gray-500">{Noun} n&apos;a pas été confirmé, ou la confirmation prend plus de temps que prévu. Vérifie ton activité — si le montant a été débité, il y apparaîtra.</p>
           <div className="mt-6 flex flex-col gap-2">
             <Button className="max-w-[260px]" onClick={() => router.replace("/activite")}>Voir mon activité</Button>
-            <button type="button" onClick={() => router.replace("/tuition")} className="text-[13px] font-bold text-blue-600">Réessayer un paiement</button>
+            <button type="button" onClick={() => router.replace(isSend ? "/envoyer" : "/tuition")} className="text-[13px] font-bold text-blue-600">Réessayer</button>
           </div>
         </>
       )}

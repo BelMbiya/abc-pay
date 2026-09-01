@@ -3,6 +3,7 @@
 namespace App\Services\Identity;
 
 use App\Models\Admin;
+use App\Services\Identity\Exceptions\AccountBlockedException;
 use App\Services\Identity\Exceptions\InvalidCredentialsException;
 use Illuminate\Support\Facades\Hash;
 
@@ -48,8 +49,9 @@ class AdminAuthService
         if (! $admin || ! Hash::check($password, $admin->password)) {
             throw new InvalidCredentialsException('Identifiants invalides.');
         }
+        // Identifiants BONS mais compte désactivé → message clair (pas « identifiants invalides »).
         if (! $admin->is_active) {
-            throw new InvalidCredentialsException('Compte administrateur désactivé.');
+            throw new AccountBlockedException('Compte administrateur désactivé. Contacte le support abc pay.');
         }
 
         return [

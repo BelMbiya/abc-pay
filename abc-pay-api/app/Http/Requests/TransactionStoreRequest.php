@@ -18,6 +18,7 @@ class TransactionStoreRequest extends SecureFormRequest
             'channel' => ['required', 'in:mpesa,airtel,orange,africell,visa'],
             'counterparty_name' => ['nullable', 'string', 'max:120'],
             'counterparty_phone' => ['nullable', 'string', 'max:30'],
+            'payer_phone' => ['nullable', 'string', 'max:30'], // numéro Mobile Money du payeur (push direct)
             'label' => ['nullable', 'string', 'max:120'],
             'reference' => ['nullable', 'string', 'max:120'],
         ];

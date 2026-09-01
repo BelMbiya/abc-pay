@@ -7,6 +7,7 @@ use App\Models\FeeItem;
 use App\Models\FeeSchedule;
 use App\Models\FeeType;
 use App\Models\Learner;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Domaine Billing — types de frais, barème et postes de frais individuels.
@@ -81,6 +82,97 @@ class BillingService
             'amount' => (float) $schedule->amount,
             'currency' => $schedule->currency,
         ];
+    }
+
+    /**
+     * Modifie une ligne de barème (montant / promotion). RÉSYNC uniquement les postes
+     * NON PAYÉS (amount_paid = 0) des apprenants concernés — on ne touche JAMAIS un poste
+     * déjà réglé (intégrité des paiements).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function updateSchedule(FeeSchedule $schedule, array $data): array
+    {
+        $schedule->forceFill([
+            'amount' => round((float) ($data['amount'] ?? $schedule->amount), 2),
+            'academic_group' => array_key_exists('academic_group', $data) ? (($data['academic_group'] ?: null)) : $schedule->academic_group,
+        ])->save();
+
+        // Met à jour le montant dû des postes NON payés de ce type, pour la promotion visée.
+        $this->registreLearners($schedule)->each(function (Learner $l) use ($schedule) {
+            $l->feeItems()
+                ->where('fee_type_id', $schedule->fee_type_id)
+                ->where('amount_paid', 0)
+                ->update(['amount_due' => $schedule->amount, 'currency' => $schedule->currency]);
+        });
+
+        return [
+            'id' => $schedule->id,
+            'fee_type' => $schedule->feeType?->name,
+            'group' => $schedule->academic_group ?: 'Toutes promotions',
+            'amount' => (float) $schedule->amount,
+            'currency' => $schedule->currency,
+        ];
+    }
+
+    /**
+     * Supprime une ligne de barème. Retire les postes NON PAYÉS qu'elle a générés
+     * (les postes déjà réglés sont CONSERVÉS : historique de paiement intact).
+     */
+    public function deleteSchedule(FeeSchedule $schedule): void
+    {
+        $this->registreLearners($schedule)->each(function (Learner $l) use ($schedule) {
+            $l->feeItems()
+                ->where('fee_type_id', $schedule->fee_type_id)
+                ->where('amount_paid', 0)
+                ->delete();
+        });
+
+        $schedule->delete();
+    }
+
+    /**
+     * Modifie un type de frais (nom, fréquence, optionnel).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function updateFeeType(FeeType $type, array $data): array
+    {
+        if (array_key_exists('name', $data)) {
+            $type->name = $data['name'];
+        }
+        if (array_key_exists('frequency', $data)) {
+            $type->frequency = $data['frequency'];
+        }
+        if (array_key_exists('optional', $data)) {
+            $type->is_optional = (bool) $data['optional'];
+        }
+        $type->save();
+
+        return $this->presentFeeType($type);
+    }
+
+    /** Supprime un type de frais — refusé s'il est encore utilisé par une ligne de barème. */
+    public function deleteFeeType(FeeType $type): void
+    {
+        if (FeeSchedule::where('fee_type_id', $type->id)->exists()) {
+            throw ValidationException::withMessages([
+                'fee_type' => "Ce type est utilisé par le barème. Supprime d'abord ses lignes de barème.",
+            ]);
+        }
+
+        $type->delete();
+    }
+
+    /** Apprenants inscrits (registre) concernés par une ligne de barème (promotion). */
+    private function registreLearners(FeeSchedule $schedule)
+    {
+        return Learner::where('establishment_id', $schedule->establishment_id)
+            ->where('source', 'registre')
+            ->when($schedule->academic_group, fn ($q) => $q->where('academic_group', $schedule->academic_group))
+            ->get();
     }
 
     // ── Postes de frais & solde ───────────────────────────────────

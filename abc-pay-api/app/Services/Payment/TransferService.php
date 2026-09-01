@@ -10,6 +10,7 @@ use App\Services\Notification\NotificationService;
 use App\Services\Payment\Gateways\Contracts\PaymentGateway;
 use App\Services\Payment\Gateways\Contracts\PaymentRequest;
 use App\Services\Payment\Gateways\Contracts\PaymentState;
+use App\Services\Payment\Gateways\Contracts\TransferRequest;
 use App\Services\Payment\Gateways\Exceptions\GatewayException;
 use App\Services\Platform\SettingsService;
 use Illuminate\Support\Facades\DB;
@@ -71,15 +72,21 @@ class TransferService
                 return $this->present($tx, $failure);
             }
 
-            // ── ENCAISSEMENT RÉEL (passerelle) : « Payer un service » débite le mobile money
-            //    du payeur via CinetPay. La transaction reste `pending` jusqu'au retour de
-            //    statut / webhook. (L'envoi P2P `send` est un DÉCAISSEMENT réglementé → reste
-            //    en mock ici, traité hors passerelle.) ──
-            if ($data['type'] === 'service' && $this->gateway->enabled()) {
-                return $this->createServiceViaGateway($user, $data, $amount, $currency, $idempotencyKey);
+            // ── ENCAISSEMENT RÉEL (passerelle) ──
+            //   • « Payer un service » : débite le mobile money du payeur.
+            //   • « Envoyer » (P2P) : ENCAISSE d'abord l'EXPÉDITEUR (jambe 1) ; le
+            //     DÉCAISSEMENT vers le destinataire (jambe 2) a lieu à la confirmation.
+            //   La transaction reste `pending` jusqu'au retour de statut / webhook.
+            if ($this->gateway->enabled()) {
+                if ($data['type'] === 'service') {
+                    return $this->createServiceViaGateway($user, $data, $amount, $currency, $idempotencyKey);
+                }
+                if ($data['type'] === 'send') {
+                    return $this->createSendViaGateway($user, $data, $amount, $currency, $idempotencyKey);
+                }
             }
 
-            // ── Succès (mode démo / envoi P2P) ──
+            // ── Succès (mode démo, passerelle OFF) ──
             $tx = $this->record($user, $data, $amount, $currency, 'confirmee', $idempotencyKey);
             $this->fraud->flag($tx); // évaluation anti-fraude
             $this->receipts->issueFor($tx);
@@ -92,26 +99,9 @@ class TransferService
                 ['amount' => $amount, 'currency' => $currency],
             );
 
-            // Vice-versa : mouvement miroir « Reçu » + notification du DESTINATAIRE.
-            if ($data['type'] === 'send' && ! empty($data['counterparty_phone'])) {
-                $recipient = User::where('phone', $data['counterparty_phone'])->first();
-                if ($recipient && $recipient->id !== $user->id) {
-                    $credit = Transaction::create([
-                        'type' => 'receive', 'direction' => 'credit', 'user_id' => $recipient->id,
-                        'counterparty_name' => $user->name, 'counterparty_phone' => $user->phone,
-                        'channel' => $data['channel'], 'amount' => $amount, 'service_fee' => 0,
-                        'commission' => 0, 'total' => $amount, 'currency' => $currency,
-                        'status' => 'confirmee', 'confirmed_at' => now(),
-                    ]);
-                    $this->receipts->issueFor($credit);
-
-                    $this->notifications->notify(
-                        $recipient->id, 'receive', 'success',
-                        'Argent reçu',
-                        'Vous avez reçu '.$this->money($amount, $currency).' de '.($user->name ?: $user->phone).'.',
-                        ['amount' => $amount, 'currency' => $currency, 'from' => $user->phone],
-                    );
-                }
+            // Vice-versa : mouvement miroir « Reçu » + notification du DESTINATAIRE (démo).
+            if ($data['type'] === 'send') {
+                $this->mirrorReceive($tx);
             }
 
             return $this->present($tx->fresh('receipt'));
@@ -145,7 +135,9 @@ class TransferService
                 clientEmail: $user->email ?: 'paiement@abcpay.cd',
                 clientFirstName: $firstName,
                 clientLastName: $lastName,
-                clientPhone: $user->phone,
+                // Numéro Mobile Money du payeur = cible du push direct (Araka). Saisi au
+                // formulaire (peut différer du profil), repli sur le numéro du compte.
+                clientPhone: ($data['payer_phone'] ?? null) ?: $user->phone,
                 successUrl: $statutUrl,
                 failedUrl: $statutUrl,
                 notifyUrl: config('cinetpay.notify_base').'/api/v1/webhooks/'.$this->gateway->name().'/payment',
@@ -164,8 +156,60 @@ class TransferService
     }
 
     /**
-     * Vérifie ACTIVEMENT le statut d'un paiement de service en attente auprès de CinetPay
+     * ENVOI P2P via passerelle — JAMBE 1 : encaisse l'EXPÉDITEUR (push sur SON Mobile Money).
+     * La transaction reste `pending` ; le DÉCAISSEMENT vers le destinataire (jambe 2) a lieu
+     * à la confirmation (`confirmSend`). Exige le numéro de l'expéditeur (profil).
+     *
+     * @return array<string, mixed>
+     */
+    private function createSendViaGateway(User $user, array $data, float $amount, string $currency, ?string $idem): array
+    {
+        if (! $user->phone) {
+            throw ValidationException::withMessages([
+                'payment' => 'Ajoute ton numéro Mobile Money dans « Profil » pour envoyer de l\'argent.',
+            ]);
+        }
+
+        $tx = $this->record($user, $data, $amount, $currency, 'pending', $idem);
+        $tx->forceFill(['gateway' => $this->gateway->name()])->save();
+
+        $merchantRef = 'ABSN'.strtoupper(Str::random(12)); // 16 car. (≤20 Araka, ≤30 CinetPay)
+        [$firstName, $lastName] = $this->splitClientName($user->name);
+        $statutUrl = config('cinetpay.front_url').'/paiement/statut?tx='.$tx->id;
+        $dest = ($data['counterparty_name'] ?? null) ?: ($data['counterparty_phone'] ?? 'un proche');
+
+        try {
+            $init = $this->gateway->initPayment(new PaymentRequest(
+                merchantRef: $merchantRef,
+                amount: (int) round($amount),
+                currency: $currency,
+                channel: $data['channel'],           // canal de paiement de l'EXPÉDITEUR
+                designation: 'Envoi à '.$dest,
+                clientEmail: $user->email ?: 'paiement@abcpay.cd',
+                clientFirstName: $firstName,
+                clientLastName: $lastName,
+                clientPhone: $user->phone,           // push sur le Mobile Money de l'EXPÉDITEUR
+                successUrl: $statutUrl,
+                failedUrl: $statutUrl,
+                notifyUrl: config('cinetpay.notify_base').'/api/v1/webhooks/'.$this->gateway->name().'/payment',
+            ));
+        } catch (GatewayException $e) {
+            throw ValidationException::withMessages(['payment' => $e->getMessage()]);
+        }
+
+        $tx->forceFill([
+            'gateway_ref' => $init->reference,
+            'payment_token' => $init->paymentToken,
+            'notify_token' => $init->notifyToken,
+        ])->save();
+
+        return $this->present($tx) + ['payment_url' => $init->redirectUrl];
+    }
+
+    /**
+     * Vérifie ACTIVEMENT le statut d'un paiement en attente auprès de la passerelle
      * (fallback webhook, indispensable en local). Confirme ou échoue en conséquence.
+     * Dispatch par type : `send` → décaissement au destinataire ; `service` → simple confirm.
      */
     public function refreshStatus(Transaction $transaction): Transaction
     {
@@ -181,12 +225,149 @@ class TransferService
         }
 
         if ($state === PaymentState::Success) {
-            $this->confirmService($transaction);
+            $transaction->type === 'send'
+                ? $this->confirmSend($transaction)
+                : $this->confirmService($transaction);
         } elseif ($state === PaymentState::Failed) {
             $transaction->forceFill(['status' => 'failed'])->save();
         }
 
         return $transaction->fresh();
+    }
+
+    /**
+     * ENVOI P2P — JAMBE 2 : l'encaissement de l'expéditeur est confirmé → on DÉCAISSE le
+     * destinataire (opérateur déduit de son numéro). Idempotent (claim atomique anti
+     * double-décaissement). En cas d'échec du décaissement, l'expéditeur est REMBOURSÉ.
+     */
+    public function confirmSend(Transaction $tx): void
+    {
+        // Claim ATOMIQUE : seule la 1re confirmation déclenche le décaissement (anti-rejeu).
+        $claimed = Transaction::whereKey($tx->id)->where('status', 'pending')
+            ->update(['status' => 'confirmee', 'confirmed_at' => now()]);
+        if ($claimed === 0) {
+            return;
+        }
+        $tx->refresh();
+        $this->fraud->flag($tx);
+
+        // Décaissement RÉEL vers le destinataire (jambe 2).
+        try {
+            $transfer = $this->gateway->sendTransfer(new TransferRequest(
+                reference: $tx->id,
+                amount: (float) $tx->amount,
+                currency: $tx->currency,
+                channel: $this->recipientChannel($tx->counterparty_phone),
+                phone: $tx->counterparty_phone,
+                beneficiaryName: $tx->counterparty_name ?: 'Bénéficiaire',
+                reason: 'Envoi abc pay',
+            ));
+        } catch (GatewayException $e) {
+            // Encaissé mais NON livré → remboursement automatique de l'expéditeur.
+            $this->refundSenderAfterFailedPayout($tx, $e->getMessage());
+
+            return;
+        }
+
+        // Livré : reçu, trace du décaissement, notifications, miroir « Reçu ».
+        $tx->forceFill(['notify_token' => $transfer->providerRef ?? $tx->notify_token])->save();
+        $this->receipts->issueFor($tx);
+
+        if ($tx->user_id) {
+            $this->notifications->notify(
+                $tx->user_id, 'send', 'success', 'Envoi réussi',
+                'Envoi de '.$this->money((float) $tx->amount, $tx->currency).' à '.($tx->counterparty_name ?: $tx->counterparty_phone).' effectué.',
+                ['amount' => (float) $tx->amount, 'currency' => $tx->currency, 'to' => $tx->counterparty_phone],
+            );
+        }
+
+        $this->mirrorReceive($tx);
+    }
+
+    /**
+     * Décaissement destinataire IMPOSSIBLE après encaissement de l'expéditeur : on RENVOIE
+     * l'argent à l'expéditeur (via la passerelle). Si même ce remboursement échoue, on
+     * marque `failed` et on notifie (régularisation manuelle). Jamais d'argent « avalé ».
+     */
+    private function refundSenderAfterFailedPayout(Transaction $tx, string $reason): void
+    {
+        $sender = $tx->user_id ? User::find($tx->user_id) : null;
+        $refunded = false;
+
+        if ($sender?->phone) {
+            try {
+                $this->gateway->sendTransfer(new TransferRequest(
+                    reference: substr($tx->id, 0, 17).'RF',
+                    amount: (float) $tx->amount,
+                    currency: $tx->currency,
+                    channel: $tx->channel,           // même canal que l'encaissement de l'expéditeur
+                    phone: $sender->phone,
+                    beneficiaryName: $sender->name ?: 'Expéditeur',
+                    reason: 'Remboursement envoi abc pay',
+                ));
+                $refunded = true;
+            } catch (GatewayException) {
+                // Remboursement auto impossible → régularisation manuelle (statut failed + alerte).
+            }
+        }
+
+        $tx->forceFill(['status' => $refunded ? 'remboursee' : 'failed'])->save();
+
+        if ($tx->user_id) {
+            $this->notifications->notify(
+                $tx->user_id, 'send', 'error', 'Envoi non abouti',
+                'Ton envoi de '.$this->money((float) $tx->amount, $tx->currency).' à '.($tx->counterparty_name ?: $tx->counterparty_phone).' n\'a pas pu être livré'
+                .($refunded ? ' — tu as été remboursé.' : '. Le remboursement automatique a échoué ; le support régularisera.'),
+                ['amount' => (float) $tx->amount, 'currency' => $tx->currency, 'reason' => $reason, 'refunded' => $refunded],
+            );
+        }
+    }
+
+    /** Mouvement miroir « Reçu » + notification si le destinataire est un utilisateur abc pay. */
+    private function mirrorReceive(Transaction $tx): void
+    {
+        if (! $tx->counterparty_phone) {
+            return;
+        }
+        $recipient = User::where('phone', $tx->counterparty_phone)->first();
+        if (! $recipient || $recipient->id === $tx->user_id) {
+            return;
+        }
+        $sender = $tx->user_id ? User::find($tx->user_id) : null;
+
+        $credit = Transaction::create([
+            'type' => 'receive', 'direction' => 'credit', 'user_id' => $recipient->id,
+            'counterparty_name' => $sender?->name, 'counterparty_phone' => $sender?->phone,
+            'channel' => $tx->channel, 'amount' => $tx->amount, 'service_fee' => 0,
+            'commission' => 0, 'total' => $tx->amount, 'currency' => $tx->currency,
+            'status' => 'confirmee', 'confirmed_at' => now(),
+        ]);
+        $this->receipts->issueFor($credit);
+
+        $this->notifications->notify(
+            $recipient->id, 'receive', 'success', 'Argent reçu',
+            'Vous avez reçu '.$this->money((float) $tx->amount, $tx->currency).' de '.($sender?->name ?: $sender?->phone ?: 'un proche').'.',
+            ['amount' => (float) $tx->amount, 'currency' => $tx->currency, 'from' => $sender?->phone],
+        );
+    }
+
+    /** Opérateur du DESTINATAIRE déduit de son numéro (préfixes RDC). Repli : M-Pesa. */
+    private function recipientChannel(?string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', (string) $phone);
+        if (str_starts_with((string) $digits, '243')) {
+            $digits = substr($digits, 3);
+        }
+        $digits = ltrim((string) $digits, '0');
+        $prefix = substr($digits, 0, 2);
+
+        return match (true) {
+            in_array($prefix, ['81', '82'], true) => 'mpesa',
+            in_array($prefix, ['97', '99'], true) => 'airtel',
+            in_array($prefix, ['80', '84', '85', '89'], true) => 'orange',
+            $prefix === '90' => 'africell',
+            default => 'mpesa',
+        };
     }
 
     /**

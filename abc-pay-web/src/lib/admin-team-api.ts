@@ -35,3 +35,8 @@ export async function updateAdmin(id: number | string, patch: { role?: string; i
 export async function deleteAdmin(id: number | string): Promise<void> {
   await api.delete(`/api/v1/admin/admins/${id}`, auth());
 }
+
+/** Réinitialise le mot de passe d'un autre admin → il devra le changer à sa prochaine connexion. */
+export async function resetAdminPassword(id: number | string, newPassword: string): Promise<AdminAccount> {
+  return api.post<AdminAccount>(`/api/v1/admin/admins/${id}/reset-password`, { new_password: newPassword }, auth());
+}

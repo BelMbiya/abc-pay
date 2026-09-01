@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AdminResetPasswordRequest;
 use App\Http\Requests\AdminStoreRequest;
 use App\Http\Requests\AdminUpdateRequest;
 use App\Models\Admin;
@@ -63,6 +64,25 @@ class AdminTeamController extends Controller
         }
 
         $admin->fill(array_intersect_key($data, array_flip(['role', 'is_active'])))->save();
+
+        return response()->json(['data' => $this->row($admin)]);
+    }
+
+    /**
+     * Réinitialise le mot de passe d'un AUTRE administrateur (mot de passe provisoire).
+     * Force le changement à la 1re connexion (`must_change_password`). On ne réinitialise
+     * pas le sien via cette voie (utiliser le changement de son propre mot de passe).
+     */
+    public function resetPassword(AdminResetPasswordRequest $request, Admin $admin): JsonResponse
+    {
+        if ($admin->id === $request->user()->id) {
+            throw ValidationException::withMessages(['admin' => 'Utilise « changer mon mot de passe » pour ton propre compte.']);
+        }
+
+        $admin->forceFill([
+            'password' => $request->validated('new_password'), // haché par le cast
+            'must_change_password' => true, // provisoire → changement obligatoire à la prochaine connexion
+        ])->save();
 
         return response()->json(['data' => $this->row($admin)]);
     }

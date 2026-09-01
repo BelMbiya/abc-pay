@@ -7,6 +7,7 @@ import { money, currencyCode, currencySymbol } from "@/lib/money";
 import { mobileMethods } from "@/lib/payments-data";
 import { channelId } from "@/lib/tuition-api";
 import { recordTransaction } from "@/lib/transfers-api";
+import { useAuth } from "@/lib/auth-context";
 
 type Step = "form" | "method" | "success" | "failed";
 const CUR = ["USD", "CDF"];
@@ -18,9 +19,11 @@ export interface PayTarget {
 
 /** Payer un service (électricité, eau, dîme…) — feuille coulissante (devise + succès/échec). */
 export function PayServiceSheet({ target, onClose }: { target: PayTarget | null; onClose: () => void }) {
+  const { user } = useAuth();
   const open = target !== null;
   const [step, setStep] = useState<Step>("form");
   const [reference, setReference] = useState("");
+  const [payerPhone, setPayerPhone] = useState("");
   const [amount, setAmount] = useState<number>(10);
   const [currency, setCurrency] = useState(currencyCode());
   const [method, setMethod] = useState("");
@@ -32,18 +35,19 @@ export function PayServiceSheet({ target, onClose }: { target: PayTarget | null;
     if (open) {
       setStep("form");
       setReference("");
+      setPayerPhone(user?.phone ?? ""); // pré-rempli avec le numéro du profil
       setAmount(10);
       setCurrency(currencyCode());
       setMethod("");
       setReason(null);
     }
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [open]);
+  }, [open, user?.phone]);
 
   const pick = async (m: string) => {
     setMethod(m);
     setBusy(true);
-    const res = await recordTransaction({ type: "service", amount, currency, channel: channelId(m), label: target?.label, reference });
+    const res = await recordTransaction({ type: "service", amount, currency, channel: channelId(m), label: target?.label, reference, payer_phone: payerPhone.trim() });
     // Passerelle CinetPay : on ouvre la page de paiement hébergée. La confirmation (et le
     // reçu) arrivent au retour via la page de statut — pas d'affichage de succès ici.
     if (res.redirectUrl) {
@@ -70,13 +74,17 @@ export function PayServiceSheet({ target, onClose }: { target: PayTarget | null;
         <div className="flex flex-col">
           <p className="mb-4 text-[12.5px] text-gray-500">{target?.sub}</p>
           <Field label="Référence" placeholder="N° de compteur, d'abonnement…" value={reference} onChange={(e) => setReference(e.target.value)} />
+          <div className="mt-3.5">
+            <Field label="Ton numéro Mobile Money" placeholder="+243…" value={payerPhone} onChange={(e) => setPayerPhone(e.target.value)} />
+            <p className="mt-1 text-[11.5px] text-gray-500">Le paiement sera demandé sur ce numéro.</p>
+          </div>
           <p className="mb-1 mt-3.5 text-[12.5px] font-bold text-gray-700">Montant</p>
           <AmountInput currency={currencySymbol(currency)} value={amount || ""} onChange={(e) => setAmount(Number(e.target.value) || 0)} />
           <p className="mb-1.5 mt-3.5 text-[12.5px] font-bold text-gray-700">Devise</p>
           <ChipGroup>
             {CUR.map((c) => <Chip key={c} selected={currency === c} onClick={() => setCurrency(c)}>{c === "USD" ? "USD ($)" : "CDF (FC)"}</Chip>)}
           </ChipGroup>
-          <Button className="mt-6" disabled={!amount} onClick={() => setStep("method")}>Continuer</Button>
+          <Button className="mt-6" disabled={!amount || !payerPhone.trim()} onClick={() => setStep("method")}>Continuer</Button>
         </div>
       ) : null}
 

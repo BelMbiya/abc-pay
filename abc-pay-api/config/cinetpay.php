@@ -50,6 +50,16 @@ return [
     // TTL du cache du jeton (expires_in = 86400 s ; on garde une marge).
     'token_ttl' => (int) env('CINETPAY_TOKEN_TTL', 82800),
 
+    // Montant MINIMUM accepté par CinetPay (mobile money). En dessous, CinetPay renvoie un
+    // « 2010 FAILED / Paiement échoué » OPAQUE. On garde-fou AVANT l'appel avec un message
+    // clair. Sandbox USD M-Pesa CD : ~100. 0 = pas de garde-fou. (Dépend devise/opérateur.)
+    'min_amount' => (int) env('CINETPAY_MIN_AMOUNT', 0),
+
+    // Proxy sortant OPTIONNEL pour les appels CinetPay. En le pointant vers un proxy à
+    // IP FIXE (whitelistée une fois), on élimine le « This Ip is not withlisted » causé par
+    // une IP publique dynamique en dev. Ex. CINETPAY_HTTP_PROXY=http://user:pass@ip:port
+    'http_proxy' => env('CINETPAY_HTTP_PROXY'),
+
     // Vérification TLS. On pointe vers un bundle CA embarqué (corrige « cURL error 60 »
     // sur les PHP mal configurés) ; sinon vérification système. `CINETPAY_VERIFY_SSL=false`
     // est un repli DEV UNIQUEMENT (jamais en prod — MITM).

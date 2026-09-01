@@ -123,6 +123,22 @@ class CinetPayIntegrationTest extends TestCase
         $this->assertDatabaseHas('receipts', ['transaction_id' => $txId]);
     }
 
+    public function test_montant_sous_le_minimum_est_refuse_avant_cinetpay(): void
+    {
+        config(['cinetpay.min_amount' => 100]);
+        Http::fake(); // aucun appel ne doit partir (garde-fou avant CinetPay)
+
+        $e = Establishment::factory()->create(['fees' => ['Minerval'], 'presets' => [250], 'currency' => 'USD']);
+        $payload = $this->paymentPayload($e);
+        $payload['amount'] = 10; // sous le minimum CinetPay
+
+        $res = $this->postJson('/api/v1/payments', $payload)->assertStatus(422);
+        $body = json_encode($res->json(), JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('montant minimum', $body);
+        $this->assertDatabaseCount('transactions', 0);
+        Http::assertNothingSent();
+    }
+
     public function test_numero_incoherent_avec_operateur_est_refuse_avant_cinetpay(): void
     {
         Http::fake(); // aucun appel ne doit partir (validation avant CinetPay)
@@ -191,6 +207,32 @@ class CinetPayIntegrationTest extends TestCase
         $this->assertDatabaseHas('settlements', ['id' => $settlement->id, 'status' => 'paid']);
     }
 
+    public function test_reversement_cinetpay_succes_immediat_est_marque_paye(): void
+    {
+        // Le transfert RDC réussit immédiatement (code 100 SUCCESS) → « payé » tout de suite,
+        // sans attendre le webhook (indispensable en local).
+        Http::fake([
+            '*/oauth/login' => Http::response(['code' => 200, 'status' => 'OK', 'access_token' => 'TOK', 'expires_in' => 86400]),
+            '*/transfer' => Http::response(['code' => 100, 'status' => 'SUCCESS', 'transaction_id' => 'CPT-2', 'notify_token' => 'NT-2']),
+        ]);
+
+        $e = Establishment::factory()->create(['currency' => 'USD', 'payout_phone' => '+243810000700', 'payout_method' => 'MPESA_CD']);
+        Transaction::create([
+            'establishment_id' => $e->id, 'student_name' => 'Grace', 'student_matricule' => 'M1', 'fee_type' => 'Minerval',
+            'channel' => 'mpesa', 'amount' => 250, 'service_fee' => 0, 'commission' => 3.75, 'total' => 250,
+            'currency' => 'USD', 'status' => 'confirmee', 'confirmed_at' => now(),
+        ]);
+
+        $this->postJson("/api/v1/admin/establishments/{$e->id}/settlements", ['reference' => 'REV-2'], $this->adminAuth())
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'paid'); // succès immédiat → payé
+
+        $settlement = Settlement::where('establishment_id', $e->id)->firstOrFail();
+        $this->assertSame('paid', $settlement->status);
+        $this->assertNotNull($settlement->paid_at);
+        $this->assertSame('CPT-2', $settlement->gateway_transfer_id);
+    }
+
     public function test_reversement_mode_enregistrement_quand_transfert_auto_off(): void
     {
         // Reversement automatique OFF (défaut) : acte comptable → « payé » immédiatement,
@@ -226,5 +268,23 @@ class CinetPayIntegrationTest extends TestCase
 
         $this->postJson("/api/v1/admin/establishments/{$e->id}/settlements", [], $this->adminAuth())->assertStatus(422);
         $this->assertDatabaseCount('settlements', 0);
+    }
+
+    public function test_reversement_bloque_pour_etablissement_suspendu(): void
+    {
+        // Un établissement SUSPENDU ne peut plus recevoir de reversement (fonds gelés).
+        config(['cinetpay.transfer_enabled' => false]); // isole du chemin transfert
+        Http::fake();
+        $e = Establishment::factory()->create(['currency' => 'USD', 'is_active' => false]);
+        Transaction::create([
+            'establishment_id' => $e->id, 'student_name' => 'X', 'student_matricule' => 'M', 'fee_type' => 'Minerval',
+            'channel' => 'mpesa', 'amount' => 500, 'service_fee' => 0, 'commission' => 10, 'total' => 500,
+            'currency' => 'USD', 'status' => 'confirmee', 'confirmed_at' => now(),
+        ]);
+
+        $res = $this->postJson("/api/v1/admin/establishments/{$e->id}/settlements", ['reference' => 'REV-SUSP'], $this->adminAuth())
+            ->assertStatus(422);
+        $this->assertStringContainsString('suspendu', strtolower(json_encode($res->json(), JSON_UNESCAPED_UNICODE)));
+        $this->assertDatabaseCount('settlements', 0); // rien reversé
     }
 }

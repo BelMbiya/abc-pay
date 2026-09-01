@@ -16,9 +16,12 @@ class StaffDashboardController extends Controller
     {
         $establishment = $request->attributes->get('establishment');
 
+        // Période de filtrage des flux (défaut : aujourd'hui). Validée côté service (allowlist).
+        $period = (string) $request->query('period', 'today');
+
         // Nom de l'établissement porté par le dashboard → l'accueil l'affiche toujours,
         // sans dépendre de l'ancienneté de la session (payload de login).
-        $data = $this->stats->forEstablishment($establishment->id);
+        $data = $this->stats->forEstablishment($establishment->id, $period);
         $data['establishment_name'] = $establishment->name;
 
         return response()->json(['data' => $data]);

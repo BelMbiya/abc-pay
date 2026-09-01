@@ -6,6 +6,8 @@ use App\Services\Payment\Gateways\Contracts\PaymentGateway;
 use App\Services\Payment\Gateways\Contracts\PaymentInit;
 use App\Services\Payment\Gateways\Contracts\PaymentRequest;
 use App\Services\Payment\Gateways\Contracts\PaymentState;
+use App\Services\Payment\Gateways\Contracts\TransferRequest;
+use App\Services\Payment\Gateways\Contracts\TransferResult;
 use App\Services\Payment\Gateways\Exceptions\GatewayException;
 use Illuminate\Http\Client\RequestException;
 
@@ -43,6 +45,13 @@ class CinetPayGateway implements PaymentGateway
 
     public function initPayment(PaymentRequest $r): PaymentInit
     {
+        // Garde-fou MONTANT MINIMUM : sous le seuil CinetPay, l'API renvoie un « 2010 FAILED »
+        // opaque. On remonte un message CLAIR et actionnable AVANT même l'appel.
+        $min = (int) config('cinetpay.min_amount');
+        if ($min > 0 && $r->amount < $min) {
+            throw new GatewayException("Le montant minimum accepté par CinetPay est de {$min} {$r->currency}. Augmente le montant.");
+        }
+
         // Cohérence numéro ↔ opérateur AVANT d'appeler CinetPay : un numéro d'un AUTRE
         // opérateur (ex. Airtel choisi + numéro M-Pesa 81) est refusé par CinetPay avec un
         // « 2010 FAILED » opaque. On le détecte ici → message clair + zéro appel gaspillé.
@@ -174,5 +183,72 @@ class CinetPayGateway implements PaymentGateway
             $status === 'FAILED' => PaymentState::Failed,
             default => PaymentState::Pending,
         };
+    }
+
+    public function payoutEnabled(): bool
+    {
+        // Module « Transferts d'argent » CinetPay : activation SÉPARÉE de l'encaissement
+        // (+ solde approvisionné). OFF → reversement = acte comptable (marqué « payé »).
+        return $this->client->enabled() && (bool) config('cinetpay.transfer_enabled');
+    }
+
+    public function sendTransfer(TransferRequest $r): TransferResult
+    {
+        // `merchant_transaction_id` = id du Settlement : matché par le webhook de transfert
+        // (POST /webhooks/cinetpay/transfer) qui posera « paid » si le décaissement est asynchrone.
+        $payload = array_filter([
+            'currency' => $r->currency,
+            'payment_method' => $this->resolveTransferMethod($r->channel),
+            'merchant_transaction_id' => $r->reference,
+            'amount' => (int) round($r->amount),
+            'phone_number' => $r->phone,
+            'reason' => $r->reason,
+            'notify_url' => config('cinetpay.notify_base').'/api/v1/webhooks/cinetpay/transfer',
+        ], fn ($v) => $v !== null && $v !== '');
+
+        try {
+            $res = $this->client->sendTransfer($payload);
+        } catch (RequestException $e) {
+            // Même format d'erreur lisible que l'encaissement (IP non autorisée, etc.).
+            $this->client->forgetToken(); // au cas où le jeton en cache serait périmé
+            $body = (array) ($e->response?->json() ?? []);
+            throw new GatewayException('Reversement refusé par CinetPay : '.self::humanReason($body));
+        }
+
+        // Init transfert ACCEPTÉE = code 2002 (PENDING) ou 100 (SUCCESS immédiat). CinetPay
+        // peut répondre HTTP 200 avec `2010 FAILED` (ex. module inactif) : on remonte la
+        // VRAIE raison et on lève (jamais un faux « en cours »).
+        $code = (string) ($res['code'] ?? '');
+        $status = strtoupper((string) ($res['status'] ?? ''));
+        if ($code !== '2002' && ! in_array($status, ['PENDING', 'SUCCESS', 'SUCCES'], true)) {
+            $info = (! empty($res['details']) && is_array($res['details'])) ? $res['details'] : $res;
+            throw new GatewayException('Reversement refusé par CinetPay : '.self::humanReason($info));
+        }
+
+        // Transfert RDC souvent confirmé immédiatement (code 100 / SUCCESS) → « payé » tout de
+        // suite (indispensable en local). Sinon (PENDING/2002) → le webhook posera « paid ».
+        $done = $code === '100' || in_array($status, ['SUCCESS', 'SUCCES', 'COMPLETED'], true);
+
+        return new TransferResult(
+            state: $done ? PaymentState::Success : PaymentState::Pending,
+            providerRef: $res['transaction_id'] ?? ($res['data']['transaction_id'] ?? null),
+            notifyToken: $res['notify_token'] ?? ($res['data']['notify_token'] ?? null),
+        );
+    }
+
+    /**
+     * Code opérateur CinetPay pour un décaissement. Tolérant : accepte le canal abc pay
+     * (mpesa → MPESA_CD, via method_map — cas du remboursement, qui porte `channel`) COMME
+     * un code CinetPay déjà résolu (MPESA_CD, FLOOZ… — cas du reversement, qui porte
+     * `payout_method`). Vide → méthode de transfert par défaut.
+     */
+    private function resolveTransferMethod(?string $channel): ?string
+    {
+        if ($channel === null || $channel === '') {
+            return config('cinetpay.default_transfer_method');
+        }
+        $map = (array) config('cinetpay.method_map', []);
+
+        return $map[strtolower($channel)] ?? $channel; // canal → code, sinon code tel quel
     }
 }

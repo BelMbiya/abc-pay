@@ -105,3 +105,41 @@ export async function fetchEstablishmentSettlements(id: string): Promise<Establi
 export async function executeSettlement(id: string, reference?: string): Promise<{ id: string; net: number; transactions_count: number; status: string }> {
   return api.post(`/api/v1/admin/establishments/${id}/settlements`, reference ? { reference } : {}, auth());
 }
+
+// ── Vérification (KYC responsable + KYB documents), pilotable par l'admin même sans dépôt ──
+
+export interface KybDocItem {
+  type: string;
+  label: string;
+  hint?: string;
+  required: boolean;
+  needs_number: boolean;
+  provided: boolean;
+  number?: string | null;
+  status: string; // missing | pending | approved | rejected
+  note?: string | null;
+}
+
+export interface EstablishmentVerification {
+  items: KybDocItem[];
+  completeness: { required: number; approved: number; complete: boolean; missing: string[] };
+  director: { user_id: number; name?: string | null; phone?: string | null; kyc_required: boolean; kyc_status: string } | null;
+}
+
+/** Aperçu vérification d'un établissement (documents KYB + KYC du responsable). */
+export async function fetchEstablishmentVerification(id: string): Promise<EstablishmentVerification> {
+  return api.get<EstablishmentVerification>(`/api/v1/admin/establishments/${id}/documents`, auth());
+}
+
+/** Pose/actualise le statut (ou le numéro) d'une pièce KYB — sans exiger de fichier. */
+export async function reviewEstablishmentDoc(
+  id: string,
+  input: { type: string; status?: "pending" | "approved" | "rejected"; number?: string; note?: string },
+): Promise<KybDocItem & { completeness: EstablishmentVerification["completeness"] }> {
+  return api.post(`/api/v1/admin/establishments/${id}/documents`, input, auth());
+}
+
+/** Confirme/rejette l'identité (KYC) d'un utilisateur — même s'il n'a rien soumis. */
+export async function decideUserKyc(userId: number, decision: "approve" | "reject", reason?: string): Promise<unknown> {
+  return api.post(`/api/v1/admin/kyc/${userId}/decide`, reason ? { decision, reason } : { decision }, auth());
+}

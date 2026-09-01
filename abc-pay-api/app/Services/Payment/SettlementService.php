@@ -8,7 +8,9 @@ use App\Models\Settlement;
 use App\Models\Transaction;
 use App\Services\Notification\NotificationService;
 use App\Services\Payment\Exceptions\NothingToSettleException;
-use App\Services\Payment\Gateways\CinetPayClient;
+use App\Services\Payment\Gateways\Contracts\PaymentGateway;
+use App\Services\Payment\Gateways\Contracts\TransferRequest;
+use App\Services\Payment\Gateways\Exceptions\GatewayException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -26,7 +28,7 @@ use Illuminate\Validation\ValidationException;
  */
 class SettlementService
 {
-    public function __construct(private readonly CinetPayClient $cinetpay) {}
+    public function __construct(private readonly PaymentGateway $gateway) {}
 
     /** Encaissements confirmés PAS ENCORE reversés (le « à reverser » du moment). */
     public function pendingFor(string $establishmentId): array
@@ -89,6 +91,10 @@ class SettlementService
                 'status' => 'paid',
                 'reference' => $s->reference,
                 'paid_at' => $s->paid_at?->toDateString(),
+                // Traçabilité : passerelle + id du transfert (à retrouver côté portail Araka/CinetPay).
+                // Absent (null) = reversement en mode démo (acte comptable, sans décaissement réel).
+                'gateway' => $s->gateway,
+                'transfer_id' => $s->gateway_transfer_id,
             ];
         }
 
@@ -112,6 +118,14 @@ class SettlementService
      */
     public function execute(Establishment $establishment, ?string $reference = null, ?string $executedBy = null): Settlement
     {
+        // Établissement SUSPENDU : au-delà de ne plus encaisser, il ne peut plus être reversé
+        // (fonds gelés tant qu'il n'est pas réactivé — litige / conformité). Barrière autoritaire.
+        if (! $establishment->is_active) {
+            throw ValidationException::withMessages([
+                'establishment' => 'Établissement suspendu : le reversement est bloqué tant qu\'il n\'est pas réactivé.',
+            ]);
+        }
+
         return DB::transaction(function () use ($establishment, $reference, $executedBy) {
             // VERROU (anti double-reversement) : `lockForUpdate` sérialise deux exécutions
             // concurrentes (Postgres) — la seconde attend puis ne voit plus rien à reverser.
@@ -131,10 +145,11 @@ class SettlementService
             $commission = round((float) $txs->sum('commission'), 2);
             $net = round($gross - $commission, 2);
 
-            // Reversement AUTOMATIQUE (transfert CinetPay) : piloté par son propre flag,
-            // indépendant de l'encaissement. OFF → acte comptable (marqué « payé »).
+            // Reversement AUTOMATIQUE (décaissement réel via la passerelle ACTIVE — CinetPay
+            // `/transfer` ou Araka `/sendmobilemoney`) : piloté par le module transfert de la
+            // passerelle, indépendant de l'encaissement. OFF → acte comptable (marqué « payé »).
             // ON → transfert réel, qui exige un numéro de réception (mobile money).
-            $payoutAuto = (bool) config('cinetpay.transfer_enabled');
+            $payoutAuto = $this->gateway->payoutEnabled();
             if ($payoutAuto && ! $establishment->payout_phone) {
                 throw ValidationException::withMessages([
                     'payout_phone' => "Reversement automatique activé mais l'établissement n'a pas de numéro de reversement (mobile money) configuré. Renseigne-le, ou désactive le reversement automatique.",
@@ -151,7 +166,7 @@ class SettlementService
                 'currency' => $establishment->currency ?: 'USD',
                 'transactions_count' => $txs->count(),
                 'status' => $payoutAuto ? 'pending' : 'paid', // réel = posé par le webhook transfert
-                'gateway' => $payoutAuto ? 'cinetpay' : null,
+                'gateway' => $payoutAuto ? $this->gateway->name() : null,
                 'reference' => $reference,
                 'executed_by' => $executedBy,
                 'paid_at' => $payoutAuto ? null : now(),
@@ -167,42 +182,31 @@ class SettlementService
             }
 
             if ($payoutAuto) {
-                // Envoi RÉEL via CinetPay. Atomique : si l'appel échoue, toute la
-                // transaction DB est annulée (aucun reversement fantôme). Le statut
-                // « paid » sera posé par le webhook transfert après confirmation.
+                // Décaissement RÉEL via la passerelle active (CinetPay ou Araka). Atomique :
+                // si l'appel échoue, toute la transaction DB est annulée (aucun reversement
+                // fantôme). Confirmation immédiate (Success) ou via webhook (Pending).
                 try {
-                    $res = $this->cinetpay->sendTransfer([
-                        'currency' => $settlement->currency,
-                        'payment_method' => $establishment->payout_method ?: config('cinetpay.default_transfer_method'),
-                        'merchant_transaction_id' => $settlement->id,
-                        'amount' => (int) round($net),
-                        'phone_number' => $establishment->payout_phone,
-                        'reason' => 'Reversement abc pay',
-                        'notify_url' => config('cinetpay.notify_base').'/api/v1/webhooks/cinetpay/transfer',
-                    ]);
-                } catch (\Illuminate\Http\Client\RequestException $e) {
-                    // Même format d'erreur lisible que l'encaissement (IP non autorisée, etc.).
-                    $this->cinetpay->forgetToken(); // au cas où le jeton en cache serait périmé
-                    $body = (array) ($e->response?->json() ?? []);
-                    $reason = \App\Services\Payment\Gateways\CinetPayGateway::humanReason($body);
-                    throw ValidationException::withMessages(['transfer' => 'Reversement refusé par CinetPay : '.$reason]);
+                    $transfer = $this->gateway->sendTransfer(new TransferRequest(
+                        reference: $settlement->id,
+                        amount: $net,
+                        currency: $settlement->currency,
+                        channel: $establishment->payout_method,
+                        phone: $establishment->payout_phone,
+                        beneficiaryName: $establishment->name,
+                        reason: 'Reversement abc pay',
+                    ));
+                } catch (GatewayException $e) {
+                    // Message déjà lisible (IP non autorisée, module inactif, refus…).
+                    throw ValidationException::withMessages(['transfer' => $e->getMessage()]);
                 }
 
-                // Init transfert ACCEPTÉE = code 2002 (PENDING). CinetPay peut répondre HTTP 200
-                // avec `code 2010 FAILED` (ex. module Transfert inactif → 1004 INVALID_PARAMS) :
-                // on remonte la VRAIE raison et on annule (jamais un faux « en cours »).
-                $tCode = (string) ($res['code'] ?? '');
-                $tStatus = strtoupper((string) ($res['status'] ?? ''));
-                if ($tCode !== '2002' && ! in_array($tStatus, ['PENDING', 'SUCCESS', 'SUCCES'], true)) {
-                    $info = (! empty($res['details']) && is_array($res['details'])) ? $res['details'] : $res;
-                    throw ValidationException::withMessages([
-                        'transfer' => 'Reversement refusé par CinetPay : '.\App\Services\Payment\Gateways\CinetPayGateway::humanReason($info),
-                    ]);
-                }
-
+                // Success = décaissé → « payé » immédiatement (indispensable en local, et cas
+                // synchrone Araka/CinetPay RDC). Pending = accepté → le webhook posera « paid ».
                 $settlement->forceFill([
-                    'gateway_transfer_id' => $res['transaction_id'] ?? ($res['data']['transaction_id'] ?? null),
-                    'notify_token' => $res['notify_token'] ?? ($res['data']['notify_token'] ?? null),
+                    'gateway_transfer_id' => $transfer->providerRef,
+                    'notify_token' => $transfer->notifyToken,
+                    'status' => $transfer->isDone() ? 'paid' : $settlement->status,
+                    'paid_at' => $transfer->isDone() ? now() : $settlement->paid_at,
                 ])->save();
             } else {
                 // Sans passerelle (démo) : reversement réputé effectué immédiatement.

@@ -44,7 +44,7 @@ class ArakaController extends Controller
 
         // 3) Re-vérif autoritaire + confirm/fail (idempotent), dispatch par type.
         if ($transaction) {
-            $transaction->type === 'service'
+            in_array($transaction->type, ['service', 'send'], true)
                 ? $this->transfers->refreshStatus($transaction)
                 : $this->tuition->refreshStatus($transaction);
         }

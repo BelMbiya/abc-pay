@@ -21,6 +21,14 @@ export async function createFeeType(input: {
   return api.post<ApiFeeType>("/api/v1/staff/fee-types", input, { token: getStaffToken() ?? undefined });
 }
 
+export async function updateFeeType(id: string, patch: { name?: string; frequency?: string; optional?: boolean }): Promise<ApiFeeType> {
+  return api.patch<ApiFeeType>(`/api/v1/staff/fee-types/${id}`, patch, { token: getStaffToken() ?? undefined });
+}
+
+export async function deleteFeeType(id: string): Promise<void> {
+  await api.delete(`/api/v1/staff/fee-types/${id}`, { token: getStaffToken() ?? undefined });
+}
+
 export interface ApiFeeSchedule {
   id: string;
   fee_type: string;
@@ -40,4 +48,12 @@ export async function createFeeSchedule(input: {
   amount: number;
 }): Promise<ApiFeeSchedule> {
   return api.post<ApiFeeSchedule>("/api/v1/staff/fee-schedules", input, { token: getStaffToken() ?? undefined });
+}
+
+export async function updateFeeSchedule(id: string, patch: { amount: number; academic_group?: string | null }): Promise<ApiFeeSchedule> {
+  return api.patch<ApiFeeSchedule>(`/api/v1/staff/fee-schedules/${id}`, patch, { token: getStaffToken() ?? undefined });
+}
+
+export async function deleteFeeSchedule(id: string): Promise<void> {
+  await api.delete(`/api/v1/staff/fee-schedules/${id}`, { token: getStaffToken() ?? undefined });
 }

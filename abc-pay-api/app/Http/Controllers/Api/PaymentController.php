@@ -62,14 +62,15 @@ class PaymentController extends Controller
      */
     public function status(Transaction $transaction): JsonResponse
     {
-        // Fallback webhook : si encore en attente, on demande le statut réel à CinetPay.
-        // Dispatch par type : « service » (payeur) vs Tuition (défaut).
-        $transaction = $transaction->type === 'service'
+        // Fallback webhook : si encore en attente, on demande le statut réel à la passerelle.
+        // Dispatch par type : « service » / « send » (payeur) vs Tuition (défaut).
+        $transaction = in_array($transaction->type, ['service', 'send'], true)
             ? $this->transfers->refreshStatus($transaction)
             : $this->payments->refreshStatus($transaction);
 
         return response()->json(['data' => [
             'status' => $transaction->status, // pending | confirmee | failed
+            'type' => $transaction->type,     // tuition | service | send (adapte le libellé UI)
             'receipt' => ['number' => $transaction->receipt?->number],
         ]]);
     }

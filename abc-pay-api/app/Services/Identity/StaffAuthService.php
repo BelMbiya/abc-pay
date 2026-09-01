@@ -5,6 +5,7 @@ namespace App\Services\Identity;
 use App\Models\Establishment;
 use App\Models\EstablishmentStaff;
 use App\Models\User;
+use App\Services\Identity\Exceptions\AccountBlockedException;
 use App\Services\Identity\Exceptions\InvalidCredentialsException;
 use Illuminate\Support\Facades\Hash;
 
@@ -30,8 +31,9 @@ class StaffAuthService
             throw new InvalidCredentialsException('Identifiants invalides.');
         }
 
+        // Identifiants BONS mais compte bloqué (litige) → message clair.
         if ($user->is_blocked) {
-            throw new InvalidCredentialsException('Compte bloqué. Contacte abc pay.');
+            throw new AccountBlockedException('Compte bloqué suite à un litige avec la plateforme. Contacte le support abc pay.');
         }
 
         $staff = EstablishmentStaff::where('user_id', $user->id)->first();
@@ -42,7 +44,7 @@ class StaffAuthService
         // SÉCURITÉ : un établissement suspendu ne peut plus se connecter.
         $establishment = Establishment::find($staff->establishment_id);
         if (! $establishment || ! $establishment->is_active) {
-            throw new InvalidCredentialsException('Cet établissement est suspendu. Contacte abc pay.');
+            throw new AccountBlockedException('Cet établissement est suspendu. Contacte le support abc pay.');
         }
 
         return [

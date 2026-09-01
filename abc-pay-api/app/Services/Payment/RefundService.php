@@ -7,9 +7,13 @@ use App\Models\EstablishmentStaff;
 use App\Models\Learner;
 use App\Models\Refund;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\Billing\BillingService;
 use App\Services\Notification\AdminNotificationService;
 use App\Services\Notification\NotificationService;
+use App\Services\Payment\Gateways\Contracts\PaymentGateway;
+use App\Services\Payment\Gateways\Contracts\TransferRequest;
+use App\Services\Payment\Gateways\Exceptions\GatewayException;
 use App\Services\Platform\SettingsService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -31,6 +35,7 @@ class RefundService
         private readonly NotificationService $notifications,
         private readonly BillingService $billing,
         private readonly SettingsService $settings,
+        private readonly PaymentGateway $gateway,
         private readonly ?AdminNotificationService $adminNotify = null,
     ) {}
 
@@ -202,7 +207,7 @@ class RefundService
         $estName = $tx->establishment?->name;
 
         // 1) Mouvement INVERSE (crédit) — apparaît dans l'historique comme une opération réelle.
-        Transaction::create([
+        $credit = Transaction::create([
             'type' => 'refund',
             'direction' => 'credit',
             'establishment_id' => $tx->establishment_id,
@@ -234,6 +239,11 @@ class RefundService
             }
         }
 
+        // 2b) DÉCAISSEMENT RÉEL au payeur (renvoi Mobile Money) si la passerelle active le
+        // permet ET qu'on a un numéro cible. Sinon : acte comptable seul (mouvement hors-bande).
+        // Un refus lève (rollback complet) → jamais « remboursé » sans que l'argent parte.
+        $this->disburseToPayer($tx, $credit, $refund);
+
         // 3) Notifie le PAYEUR (espace user).
         if ($tx->user_id) {
             $this->notifications->notify(
@@ -249,6 +259,56 @@ class RefundService
 
         $this->adminNotifySafe('Remboursement approuvé et exécuté'.($refund->forced ? ' (forcé)' : ''),
             'Transaction '.$tx->id.' remboursée ('.$amountLabel.').', $refund, 'info');
+    }
+
+    /**
+     * Renvoie RÉELLEMENT l'argent au payeur via la passerelle active (CinetPay `/transfer`
+     * ou Araka `/sendmobilemoney`), si le décaissement est activé et qu'un numéro cible existe.
+     * L'id du transfert est mémorisé sur le mouvement crédit (`gateway_ref`). En l'absence de
+     * décaissement auto (ou de numéro), on retombe sur l'acte comptable seul (mouvement
+     * hors-bande) — sans bloquer le remboursement.
+     *
+     * @throws ValidationException  si la passerelle refuse (message lisible → rollback complet)
+     */
+    private function disburseToPayer(Transaction $tx, Transaction $credit, Refund $refund): void
+    {
+        if (! $this->gateway->payoutEnabled()) {
+            return; // décaissement auto OFF → acte comptable seul (comme avant)
+        }
+
+        // Numéro du payeur : celui de la transaction, sinon le profil de l'utilisateur payeur.
+        $payerPhone = $tx->payer_phone ?: ($tx->user_id ? optional(User::find($tx->user_id))->phone : null);
+        if (! $payerPhone) {
+            // Décaissement activé mais aucune cible : on ne bloque pas (acte comptable),
+            // mais on alerte l'admin qu'un renvoi manuel est nécessaire.
+            $this->adminNotifySafe('Remboursement à décaisser manuellement',
+                'Aucun numéro Mobile Money pour le payeur — renvoi de '.$this->amountLabel($refund).' à effectuer hors-bande.',
+                $refund, 'warning');
+
+            return;
+        }
+
+        try {
+            $transfer = $this->gateway->sendTransfer(new TransferRequest(
+                reference: $credit->id,
+                amount: (float) $refund->amount,
+                currency: $tx->currency,
+                channel: $tx->channel,                       // canal abc pay → mappé par la passerelle
+                phone: $payerPhone,
+                beneficiaryName: $tx->payer_name ?: 'Payeur abc pay',
+                reason: 'Remboursement abc pay',
+            ));
+        } catch (GatewayException $e) {
+            // Message déjà lisible → 422 + rollback (le remboursement n'est PAS acté).
+            throw ValidationException::withMessages(['refund' => 'Remboursement refusé par la passerelle : '.$e->getMessage()]);
+        }
+
+        // Trace le transfert sur le mouvement crédit (Success = décaissé ; Pending = webhook).
+        $credit->forceFill([
+            'gateway' => $this->gateway->name(),
+            'gateway_ref' => $transfer->providerRef,
+            'notify_token' => $transfer->notifyToken,
+        ])->save();
     }
 
     /** Demandes visibles par un établissement (celles qui le concernent). */

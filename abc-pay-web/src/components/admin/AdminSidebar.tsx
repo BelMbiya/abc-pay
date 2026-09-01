@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  LayoutDashboard, ArrowLeftRight, Building2, Users, Percent, Plug, LifeBuoy, ShieldAlert, Star, HelpCircle, Settings, Inbox, Undo2, ShieldCheck, UserCog,
+  LayoutDashboard, ArrowLeftRight, Building2, Users, Percent, Plug, LifeBuoy, ShieldAlert, Star, HelpCircle, Settings, Inbox, Undo2, ShieldCheck, UserCog, LogOut, KeyRound, ScrollText,
 } from "lucide-react";
 import { IconRail, type RailItem } from "@/components/layout/IconRail";
-import { adminCan } from "@/lib/admin-auth";
+import { adminCan, clearAdminToken } from "@/lib/admin-auth";
 
 /** Navigation admin avec la PERMISSION requise pour chaque entrée (RBAC). */
 export const NAV: (RailItem & { perm: string })[] = [
@@ -24,14 +25,32 @@ export const NAV: (RailItem & { perm: string })[] = [
   { label: "FAQ", icon: HelpCircle, href: "/admin/faq", perm: "faq.manage" },
   { label: "Fraude", icon: ShieldAlert, href: "/admin/fraude", perm: "fraud.manage" },
   { label: "Administrateurs", icon: UserCog, href: "/admin/administrateurs", perm: "admins.manage" },
+  { label: "Journal d'audit", icon: ScrollText, href: "/admin/audit", perm: "audit.view" },
   { label: "Paramètres", icon: Settings, href: "/admin/parametres", perm: "settings.manage" },
 ];
 
+/**
+ * Permission requise pour une route admin (match du préfixe le plus long).
+ * `null` = route non répertoriée (ex. « Mon compte ») → non gardée.
+ */
+export function permForPath(pathname: string): string | null {
+  const hit = [...NAV]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((i) => (i.href === "/admin" ? pathname === "/admin" : pathname.startsWith(i.href)));
+  return hit?.perm ?? null;
+}
+
 export function AdminSidebar({ className }: { className?: string }) {
+  const router = useRouter();
   // Filtre côté client (localStorage) après montage → évite tout mismatch SSR.
   const [items, setItems] = useState<RailItem[]>(NAV);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture localStorage (client only)
   useEffect(() => setItems(NAV.filter((i) => adminCan(i.perm))), []);
+
+  const logout = () => {
+    clearAdminToken();
+    router.replace("/admin-connexion");
+  };
 
   return (
     <IconRail
@@ -41,13 +60,25 @@ export function AdminSidebar({ className }: { className?: string }) {
       className={className}
       footer={
         <>
+          {/* Mon compte (mot de passe) — accessible à TOUS les rôles (page non gardée). */}
           <Link
-            href="/admin"
-            aria-label="Aide"
+            href="/admin/compte"
+            aria-label="Mon compte"
+            title="Mon compte"
             className="flex size-11 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            <HelpCircle className="size-5" strokeWidth={2.1} />
+            <KeyRound className="size-5" strokeWidth={2.1} />
           </Link>
+          {/* Déconnexion — TOUJOURS visible, quel que soit le rôle (pas de gate). */}
+          <button
+            type="button"
+            onClick={logout}
+            aria-label="Se déconnecter"
+            title="Se déconnecter"
+            className="flex size-11 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-red-50 hover:text-red focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <LogOut className="size-5" strokeWidth={2.1} />
+          </button>
           <div
             aria-label="Équipe abc pay"
             className="bg-grad-gold flex size-10 items-center justify-center rounded-xl font-display text-[11px] font-extrabold text-gold-ink"

@@ -32,6 +32,10 @@
              ArakaIntegrationTest sélectionne Araka explicitement via config(). -->
         <env name="PAYMENT_GATEWAY" value="cinetpay"/>
         <env name="ARAKA_ENABLED" value="false"/>
+        <!-- Décaissement Araka OFF en test ; activé explicitement dans ArakaIntegrationTest. -->
+        <env name="ARAKA_TRANSFER_ENABLED" value="false"/>
+        <!-- Montant minimum CinetPay OFF en test (activé explicitement là où testé). -->
+        <env name="CINETPAY_MIN_AMOUNT" value="0"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
         <env name="DB_URL" value=""/>

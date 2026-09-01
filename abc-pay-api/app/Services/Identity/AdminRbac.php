@@ -25,6 +25,7 @@ final class AdminRbac
         'support.manage',        // litiges / support
         'settings.manage',       // réglages plateforme
         'admins.manage',         // gérer l'équipe d'administrateurs (sensible)
+        'audit.view',            // journal d'audit des actions admin (super-admin seul)
     ];
 
     /** Rôles → permissions. « * » = toutes. */

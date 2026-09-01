@@ -96,7 +96,7 @@ export default function ReversementsPage() {
                 ) : (
                   pageItems.map((s) => (
                     <tr key={s.week_start} className="border-t border-white text-[13px]">
-                      <td className="py-3 pr-3 font-bold text-ink">{s.period}<div className="text-[11px] font-normal text-gray-500">{s.count} transaction{s.count > 1 ? "s" : ""}</div></td>
+                      <td className="py-3 pr-3 font-bold text-ink">{s.period}<div className="text-[11px] font-normal text-gray-500">{s.count} transaction{s.count > 1 ? "s" : ""}{s.transfer_id ? <> · <span className="font-semibold text-gray-600">Réf. {s.gateway === "araka" ? "Araka" : s.gateway === "cinetpay" ? "CinetPay" : "transfert"} {s.transfer_id}</span></> : null}</div></td>
                       <td className="py-3 pr-3 text-right text-gray-700">{money(s.gross)}</td>
                       <td className="py-3 pr-3 text-right text-gold-600">− {money(s.commission)}</td>
                       <td className="py-3 pr-3 text-right font-bold text-ink">{money(s.net)}</td>
