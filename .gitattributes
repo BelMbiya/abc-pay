@@ -1,0 +1,18 @@
+# Normalisation des fins de ligne : texte auto, binaires jamais convertis
+* text=auto
+
+# Binaires — ne JAMAIS appliquer de conversion CRLF/LF (évite la corruption)
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.otf   binary
+*.mp4   binary
+*.zip   binary
