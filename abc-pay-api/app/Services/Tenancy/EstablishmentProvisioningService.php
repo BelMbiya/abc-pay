@@ -11,7 +11,9 @@ use App\Models\Learner;
 use App\Models\Reminder;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\Platform\SettingsService;
 use App\Services\Tenancy\Exceptions\EstablishmentActionException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -41,12 +43,83 @@ class EstablishmentProvisioningService
      */
     public function list(): array
     {
+        $sla = app(SettingsService::class)->settlementSlaDays();
+
+        // Une SEULE requête groupée (anti N+1) : montant en attente + plus ancien encaissement
+        // non reversé, par établissement — pour l'indicateur d'échéance de reversement.
+        $pending = Transaction::query()
+            ->where('status', 'confirmee')
+            ->where('direction', 'debit') // encaissements uniquement
+            ->whereNull('settlement_id')
+            ->whereNotNull('establishment_id')
+            ->groupBy('establishment_id')
+            ->selectRaw('establishment_id, SUM(amount) as amt, MIN(created_at) as oldest')
+            ->get()
+            ->keyBy('establishment_id');
+
+        // Reprises (clawback) en attente par établissement — déduites du montant à reverser.
+        $claw = \App\Models\SettlementAdjustment::query()
+            ->whereNull('settlement_id')
+            ->groupBy('establishment_id')
+            ->selectRaw('establishment_id, SUM(amount) as claw')
+            ->get()
+            ->keyBy('establishment_id');
+
         return Establishment::query()
-            ->with(['staff' => fn ($q) => $q->where('role', 'direction')->with('user:id,email,name,kyc_status')])
+            ->with(['staff' => fn ($q) => $q->where('role', 'direction')->with('user:id,email,name,kyc_status'), 'documents'])
             ->latest()
             ->get()
-            ->map(fn (Establishment $e) => $this->row($e))
+            ->map(function (Establishment $e) use ($pending, $claw, $sla) {
+                $p = $pending->get($e->id);
+                $net = $p ? (float) $p->amt - (float) ($claw->get($e->id)->claw ?? 0) : null;
+
+                return $this->row($e, $this->formatDue($net, $p?->oldest, $sla));
+            })
             ->all();
+    }
+
+    /**
+     * Indicateur d'échéance de reversement : à partir du plus ancien encaissement en attente,
+     * calcule la date limite (+ SLA jours) et les jours restants (négatif = en retard).
+     *
+     * @return array<string, mixed>|null  null si rien à reverser
+     */
+    private function formatDue(?float $amt, ?string $oldest, int $sla): ?array
+    {
+        if ($amt === null || $amt <= 0 || $oldest === null) {
+            return null;
+        }
+        $since = Carbon::parse($oldest)->startOfDay();
+        $due = $since->copy()->addDays($sla);
+        $today = Carbon::now()->startOfDay();
+        $daysRemaining = (int) floor(($due->getTimestamp() - $today->getTimestamp()) / 86400);
+
+        return [
+            'amount' => round($amt, 2),
+            'since' => $since->toDateString(),
+            'due_at' => $due->toDateString(),
+            'days_remaining' => $daysRemaining,
+            'overdue' => $daysRemaining < 0,
+            'sla_days' => $sla,
+        ];
+    }
+
+    /** Échéance de reversement d'UN établissement (requête isolée, pour update/create). */
+    private function dueForEstablishment(string $establishmentId): ?array
+    {
+        $sla = app(SettingsService::class)->settlementSlaDays();
+        $p = Transaction::query()
+            ->where('establishment_id', $establishmentId)
+            ->where('status', 'confirmee')
+            ->where('direction', 'debit') // encaissements uniquement
+            ->whereNull('settlement_id')
+            ->selectRaw('SUM(amount) as amt, MIN(created_at) as oldest')
+            ->first();
+        $claw = (float) \App\Models\SettlementAdjustment::query()
+            ->where('establishment_id', $establishmentId)->whereNull('settlement_id')->sum('amount');
+        $net = $p && $p->amt !== null ? (float) $p->amt - $claw : null;
+
+        return $this->formatDue($net, $p?->oldest, $sla);
     }
 
     /**
@@ -90,11 +163,11 @@ class EstablishmentProvisioningService
 
         $establishment->update($fields);
 
-        return $this->row($establishment->fresh(['staff.user']));
+        return $this->row($establishment->fresh(['staff.user']), $this->dueForEstablishment($establishment->id));
     }
 
     /** DTO d'un établissement (avec son compte de connexion « direction »). */
-    private function row(Establishment $e): array
+    private function row(Establishment $e, ?array $settlementDue = null): array
     {
         $staff = $e->staff->firstWhere('role', 'direction');
         $login = $staff?->user;
@@ -116,10 +189,13 @@ class EstablishmentProvisioningService
             'is_active' => (bool) $e->is_active,
             'status' => $status,
             'verification_pending' => $verificationPending,
+            'verified' => $e->isFullyVerified(), // badge « Verified » (KYC/KYB validés)
             'payout_phone' => $e->payout_phone,
             'payout_method' => $e->payout_method,
             'login_email' => $login?->email,
             'login_name' => $login?->name,
+            // Échéance de reversement (null = rien à reverser). Voir formatDue().
+            'settlement_due' => $settlementDue,
         ];
     }
 

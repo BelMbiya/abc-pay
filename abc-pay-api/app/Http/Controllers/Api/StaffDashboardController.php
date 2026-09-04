@@ -23,6 +23,8 @@ class StaffDashboardController extends Controller
         // sans dépendre de l'ancienneté de la session (payload de login).
         $data = $this->stats->forEstablishment($establishment->id, $period);
         $data['establishment_name'] = $establishment->name;
+        // Statut « Verified » (KYC/KYB validés) → badge dans l'espace établissement.
+        $data['verified'] = $establishment->isFullyVerified();
 
         return response()->json(['data' => $data]);
     }

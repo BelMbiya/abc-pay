@@ -15,6 +15,7 @@ export interface School {
   currency?: string;
   fees: string[];
   presets: number[];
+  verified?: boolean; // KYC/KYB validés → badge « Verified »
 }
 
 export const schools: School[] = [

@@ -43,12 +43,14 @@ class StatsService
         // Tous les encaissements confirmés (pour l'état cumulatif + la tendance hebdo).
         $allTxs = Transaction::query()
             ->where('establishment_id', $establishmentId)->where('status', 'confirmee')
+            ->where('direction', 'debit') // encaissements uniquement (exclut les crédits de remboursement)
             ->get(['amount', 'commission', 'channel', 'currency', 'created_at']);
 
         // Sous-ensemble de la PÉRIODE pour les flux.
         $periodTxs = $this->filterByPeriod($allTxs, $period);
 
         $collected = $this->sumBase($periodTxs, 'amount', $base);
+        $totalCollected = $this->sumBase($allTxs, 'amount', $base); // cumul TOUT confirmé (repère de revenu)
         $commission = $this->sumBase($periodTxs, 'commission', $base);
         $expected = round((float) FeeItem::where('establishment_id', $establishmentId)->sum('amount_due'), 2);
         $paid = round((float) FeeItem::where('establishment_id', $establishmentId)->sum('amount_paid'), 2);
@@ -58,11 +60,14 @@ class StatsService
             'base_currency' => $base,
             'period' => $period,
             'kpis' => [
-                'expected' => $expected,                         // cumulatif (état)
+                'expected' => $expected,                         // cumulatif (état, réconciliation)
+                'total_collected' => $totalCollected,            // cumulatif — total encaissé (tout confirmé)
                 'collected' => $collected,                       // flux (période)
-                'recovery_rate' => $recovery,                    // cumulatif (état)
-                'remaining' => round($expected - $paid, 2),      // cumulatif (état)
-                'pending_net' => round($collected - $commission, 2), // flux (période)
+                'recovery_rate' => $recovery,                    // cumulatif (état, réconciliation)
+                'remaining' => round($expected - $paid, 2),      // cumulatif (état, réconciliation)
+                'pending_net' => $collected,                     // flux (période) — montant plein (frais chez le payeur)
+                'count' => $periodTxs->count(),                  // flux (période) — nb d'encaissements
+                'avg_ticket' => $periodTxs->count() > 0 ? round($collected / $periodTxs->count(), 2) : 0.0, // ticket moyen
             ],
             'weekly' => $this->weekly($allTxs, $base),           // tendance (8 semaines)
             'by_channel' => $this->channelBreakdown($periodTxs, $base, $collected),
@@ -91,6 +96,7 @@ class StatsService
         $base = $this->settings->currency();
 
         $txs = Transaction::query()->where('status', 'confirmee')
+            ->where('direction', 'debit') // encaissements uniquement (exclut les crédits de remboursement)
             ->get(['amount', 'commission', 'channel', 'currency', 'establishment_id', 'created_at']);
 
         $volume = $this->sumBase($txs, 'amount', $base);

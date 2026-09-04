@@ -39,16 +39,27 @@ class TuitionPaymentTest extends TestCase
             ->assertJsonPath('data.0.name', 'Institut Supérieur de Commerce');
     }
 
-    public function test_devis_aucun_frais_payeur_commission_etablissement(): void
+    public function test_devis_frais_a_charge_du_payeur(): void
     {
         $e = Establishment::factory()->create(['commission_rate' => 0.02]);
 
         $this->postJson('/api/v1/payments/quote', ['establishment_id' => $e->id, 'amount' => 250])
             ->assertOk()
-            ->assertJsonPath('data.service_fee', 0)   // rien à charge du payeur
-            ->assertJsonPath('data.total', 250)       // total = montant exact
-            ->assertJsonPath('data.commission', 5)    // 250 * 2 % côté établissement
-            ->assertJsonPath('data.net_establishment', 245);
+            ->assertJsonPath('data.service_fee', 5)   // frais À LA CHARGE DU PAYEUR (250 * 2 %)
+            ->assertJsonPath('data.total', 255)       // total payeur = montant + frais
+            ->assertJsonPath('data.commission', 5)    // revenu abc pay (= frais payeur)
+            ->assertJsonPath('data.net_establishment', 250); // l'établissement reçoit le montant PLEIN
+    }
+
+    public function test_annuaire_expose_le_badge_verified(): void
+    {
+        Establishment::factory()->create(['name' => 'ZZ Ecole Vérifiée']);
+
+        $row = collect($this->getJson('/api/v1/establishments')->assertOk()->json('data'))
+            ->firstWhere('name', 'ZZ Ecole Vérifiée');
+
+        $this->assertNotNull($row);
+        $this->assertTrue($row['verified']); // établissement vetté → badge « Verified »
     }
 
     public function test_paiement_cree_transaction_et_recu(): void
@@ -57,8 +68,8 @@ class TuitionPaymentTest extends TestCase
 
         $res = $this->postJson('/api/v1/payments', $this->payload($e))
             ->assertCreated()
-            ->assertJsonPath('data.transaction.total', '250.00')       // le payeur paie le montant exact
-            ->assertJsonPath('data.transaction.service_fee', '0.00');  // aucun frais payeur
+            ->assertJsonPath('data.transaction.total', '255.00')       // le payeur paie montant + frais (250 + 5)
+            ->assertJsonPath('data.transaction.service_fee', '5.00');  // frais à la charge du payeur
 
         $this->assertDatabaseCount('transactions', 1);
         $this->assertDatabaseCount('receipts', 1);

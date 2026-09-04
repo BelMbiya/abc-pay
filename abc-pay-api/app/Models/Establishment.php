@@ -140,6 +140,16 @@ class Establishment extends Model
         return ! $this->requiresKyb() || $this->kybComplete();
     }
 
+    /**
+     * Établissement PLEINEMENT VÉRIFIÉ (identité KYC approuvée + KYB complet si exigé) —
+     * pour le badge « Verified » (indépendant de la suspension). abc pay atteste que cet
+     * établissement a satisfait ses exigences de vérification.
+     */
+    public function isFullyVerified(): bool
+    {
+        return $this->isVerified() && (! $this->requiresKyb() || $this->kybComplete());
+    }
+
     /** Réglages effectifs (défauts + surcharges stockées). */
     public function resolvedSettings(): array
     {

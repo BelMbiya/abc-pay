@@ -14,3 +14,4 @@ export { BottomSheet } from "./BottomSheet";
 export { ToastProvider, useToast } from "./Toast";
 export { ConfirmProvider, useConfirm } from "./ConfirmDialog";
 export { Pagination, usePagination } from "./Pagination";
+export { VerifiedSeal } from "./VerifiedBadge";

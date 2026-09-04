@@ -6,14 +6,14 @@ import {
   ArrowLeft, Search, GraduationCap, BadgeCheck, Smartphone, CreditCard, Check, Download, Share2, UserCheck, XCircle,
 } from "lucide-react";
 import {
-  Button, Field, AmountInput, Chip, ChipGroup, ListRow, Recap, RecapRow, Receipt, useToast,
+  Button, Field, AmountInput, Chip, ChipGroup, ListRow, Recap, RecapRow, Receipt, useToast, VerifiedSeal,
 } from "@/components/ui";
 import { money, currencySymbol } from "@/lib/money";
 import {
   schools, fieldSets, paymentMethods, studentInfo, requiredFieldIds,
   type School, type PaymentMethod,
 } from "@/lib/tuition-data";
-import { fetchEstablishments, createTuitionPayment, channelId } from "@/lib/tuition-api";
+import { fetchEstablishments, createTuitionPayment, channelId, fetchQuote } from "@/lib/tuition-api";
 import { downloadReceipt, shareReceipt, type ReceiptData } from "@/lib/receipt";
 import { useAuth } from "@/lib/auth-context";
 
@@ -86,9 +86,28 @@ export default function TuitionPage() {
     return schoolList.filter((s) => !q || s.name.toLowerCase().includes(q) || s.type.toLowerCase().includes(q));
   }, [query, schoolList]);
 
-  // RÈGLE : aucun frais à la charge du payeur — il paie exactement le montant.
-  // La commission abc pay est prélevée côté établissement (invisible pour le payeur).
-  const total = amount;
+  // RÈGLE : les frais sont À LA CHARGE DU PAYEUR → il paie `montant + frais`. Le devis est
+  // recalculé côté serveur (autoritatif) ; on l'interroge quand le montant se stabilise.
+  const [quote, setQuote] = useState<{ service_fee: number; total: number }>({ service_fee: 0, total: 0 });
+  useEffect(() => {
+    if (!school || !amount || amount <= 0) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset du devis quand pas de montant */
+      setQuote({ service_fee: 0, total: amount || 0 });
+      return;
+    }
+    let active = true;
+    const t = setTimeout(() => {
+      fetchQuote(school.id, amount)
+        .then((q) => active && setQuote({ service_fee: q.service_fee, total: q.total }))
+        .catch(() => active && setQuote({ service_fee: 0, total: amount }));
+    }, 350);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [school, amount]);
+  const serviceFee = quote.service_fee;
+  const total = quote.total || amount;
   const fullName = [student.nom, student.postnom, student.prenom].filter(Boolean).join(" ");
 
   // Plafond par frais : chaque type de frais a un montant (preset apparié) ; le
@@ -301,7 +320,14 @@ export default function TuitionPage() {
               <p className="py-6 text-center text-[13px] text-gray-500">Aucun établissement trouvé.</p>
             ) : (
               results.map((s) => (
-                <ListRow key={s.id} icon={GraduationCap} title={s.name} subtitle={`${s.type} : ${s.city}`} onClick={() => pickSchool(s)} />
+                <ListRow
+                  key={s.id}
+                  icon={GraduationCap}
+                  title={s.name}
+                  subtitle={`${s.type} : ${s.city}`}
+                  right={s.verified ? <VerifiedSeal size={17} /> : undefined}
+                  onClick={() => pickSchool(s)}
+                />
               ))
             )}
           </div>
@@ -434,19 +460,29 @@ export default function TuitionPage() {
       {step === "confirm" && school && method ? (
         <div className="flex flex-1 flex-col">
           <Recap>
-            <RecapRow label="Établissement" value={school.name} />
+            <RecapRow
+              label="Établissement"
+              value={
+                <span className="inline-flex items-center justify-end gap-1.5">
+                  {school.name}
+                  {school.verified ? <VerifiedSeal size={15} /> : null}
+                </span>
+              }
+            />
             <RecapRow label="Élève / Étudiant" value={`${fullName}, ${studentInfo(school.level, student)}`} />
             <RecapRow label="Type de frais" value={feeType} />
             <RecapRow label="Payeur" value={`${[payer.nom, payer.postnom, payer.prenom].filter(Boolean).join(" ")} (${payer.relation})`} />
             <RecapRow label="Moyen de paiement" value={method.title} />
           </Recap>
-          <div className="mt-2 flex items-center gap-2 rounded-xl bg-success-bg px-3.5 py-2.5 text-[11.5px] font-semibold text-green">
-            <BadgeCheck className="size-4 shrink-0" strokeWidth={2.2} />
-            <span>Aucun frais à ta charge — tu paies exactement le montant.</span>
-          </div>
           <Recap>
+            <RecapRow label="Montant des frais" value={`${money(amount, school?.currency ?? "USD")}`} />
+            <RecapRow label="Frais de service" value={`${money(serviceFee, school?.currency ?? "USD")}`} />
             <RecapRow label="Total à payer" value={`${money(total, school?.currency ?? "USD")}`} />
           </Recap>
+          <div className="mt-2 flex items-center gap-2 rounded-xl bg-blue-100 px-3.5 py-2.5 text-[11.5px] font-semibold text-blue-700">
+            <BadgeCheck className="size-4 shrink-0" strokeWidth={2.2} />
+            <span>L&apos;établissement reçoit l&apos;intégralité du montant ; les frais de service sont à ta charge.</span>
+          </div>
           <Button className="mt-5" disabled={submitting} onClick={submitPayment}>
             {submitting ? "Traitement…" : "Confirmer le paiement"}
           </Button>
@@ -470,7 +506,8 @@ export default function TuitionPage() {
               { label: "Élève / Étudiant", value: fullName },
               { label: "Type de frais", value: feeType },
               { label: "Moyen de paiement", value: method.title },
-              { label: "Frais à ta charge", value: "Aucun" },
+              { label: "Montant des frais", value: money(amount, school?.currency ?? "USD") },
+              { label: "Frais de service", value: money(serviceFee, school?.currency ?? "USD") },
             ]}
           />
           <div className="mt-3.5 grid grid-cols-2 gap-2">

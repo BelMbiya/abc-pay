@@ -177,6 +177,7 @@ export interface Settlement {
   period: string;
   gross: number;
   commission: number;
+  clawback?: number; // reprises déduites (remboursements de transactions déjà reversées)
   net: number;
   count: number;
   status: string; // pending | paid
@@ -186,6 +187,7 @@ export interface Settlement {
 
 export interface SettlementData {
   pending_net: number;
+  pending_clawback?: number; // reprises en attente (déduites du net à reverser)
   pending_period: string | null;
   total_net: number;
   settlements: Settlement[];

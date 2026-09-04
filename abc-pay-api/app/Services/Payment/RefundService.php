@@ -6,6 +6,7 @@ use App\Models\Establishment;
 use App\Models\EstablishmentStaff;
 use App\Models\Learner;
 use App\Models\Refund;
+use App\Models\SettlementAdjustment;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Billing\BillingService;
@@ -196,12 +197,17 @@ class RefundService
     /** Exécute le remboursement approuvé (mouvement inverse + réconciliation + notifications). */
     private function execute(Refund $refund): void
     {
+        // VERROU (lockForUpdate) : on sérialise contre un reversement concurrent AVANT de lire
+        // `settlement_id`. Sans ce verrou, un reversement qui commit entre la lecture et la
+        // mise à jour rendrait `$alreadySettled` périmé → reprise MANQUÉE → double paiement
+        // (TOCTOU relevé en revue de sécurité). Le verrou force le remboursement à attendre.
         /** @var Transaction|null $tx */
-        $tx = Transaction::with('establishment')->find($refund->transaction_id);
+        $tx = Transaction::with('establishment')->lockForUpdate()->find($refund->transaction_id);
         if (! $tx) {
             return;
         }
 
+        $alreadySettled = $tx->settlement_id !== null; // l'établissement a-t-il DÉJÀ été reversé ?
         $tx->update(['status' => 'remboursee']);
         $amountLabel = $this->amountLabel($refund);
         $estName = $tx->establishment?->name;
@@ -243,6 +249,24 @@ class RefundService
         // permet ET qu'on a un numéro cible. Sinon : acte comptable seul (mouvement hors-bande).
         // Un refus lève (rollback complet) → jamais « remboursé » sans que l'argent parte.
         $this->disburseToPayer($tx, $credit, $refund);
+
+        // 2c) REPRISE (clawback) : si la transaction avait DÉJÀ été reversée à l'établissement,
+        // on crée une reprise du montant reçu — déduite de son PROCHAIN reversement (transparence
+        // + pas de perte pour abc pay). Si NON encore reversée, aucune reprise : la transaction
+        // passée en « remboursee » sort automatiquement du « à reverser ».
+        if ($alreadySettled && $tx->establishment_id) {
+            SettlementAdjustment::create([
+                'establishment_id' => $tx->establishment_id,
+                'transaction_id' => $tx->id,
+                'refund_id' => $refund->id,
+                'amount' => $refund->amount, // l'établissement avait reçu le montant plein (frais chez le payeur)
+                'currency' => $tx->currency,
+                'reason' => 'Remboursement d\'une transaction déjà reversée',
+            ]);
+            $this->notifyEstablishmentStaff($tx, 'settlement', 'warning', 'Reprise sur reversement',
+                'La transaction '.($tx->reference ?: substr($tx->id, 0, 8)).' a été remboursée alors qu\'elle vous avait déjà été reversée. '
+                .'Une reprise de '.$amountLabel.' sera déduite de votre prochain reversement.');
+        }
 
         // 3) Notifie le PAYEUR (espace user).
         if ($tx->user_id) {

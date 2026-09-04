@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  LayoutDashboard, Users, Coins, ArrowLeftRight, Undo2, Banknote, FileBarChart, Settings, HelpCircle, ShieldCheck,
+  LayoutDashboard, Coins, ArrowLeftRight, Undo2, Banknote, FileBarChart, Settings, HelpCircle, ShieldCheck,
 } from "lucide-react";
 import { IconRail, type RailItem } from "@/components/layout/IconRail";
 import { getStaffUser } from "@/lib/staff-auth";
 
 export const NAV: RailItem[] = [
   { label: "Tableau de bord", icon: LayoutDashboard, href: "/etablissement" },
-  { label: "Réconciliation", icon: Users, href: "/etablissement/apprenants" },
   { label: "Frais & barèmes", icon: Coins, href: "/etablissement/frais" },
   { label: "Paiements", icon: ArrowLeftRight, href: "/etablissement/paiements" },
   { label: "Remboursements", icon: Undo2, href: "/etablissement/remboursements" },

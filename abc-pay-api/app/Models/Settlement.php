@@ -13,7 +13,7 @@ class Settlement extends Model
 
     protected $fillable = [
         'establishment_id', 'period_start', 'period_end',
-        'gross', 'commission', 'net', 'currency', 'transactions_count',
+        'gross', 'commission', 'clawback', 'net', 'currency', 'transactions_count',
         'status', 'reference', 'executed_by', 'paid_at',
         'gateway', 'gateway_transfer_id', 'notify_token',
     ];
@@ -26,6 +26,7 @@ class Settlement extends Model
             'paid_at' => 'datetime',
             'gross' => 'decimal:2',
             'commission' => 'decimal:2',
+            'clawback' => 'decimal:2',
             'net' => 'decimal:2',
             'transactions_count' => 'integer',
         ];

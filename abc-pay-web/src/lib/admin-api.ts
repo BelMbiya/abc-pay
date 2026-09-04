@@ -15,10 +15,20 @@ export interface AdminEstablishment {
   is_active: boolean;
   status?: "active" | "pending" | "suspended";
   verification_pending?: boolean;
+  verified?: boolean; // KYC/KYB validés → badge « Verified »
   login_email?: string | null;
   login_name?: string | null;
   payout_phone?: string | null;   // numéro mobile money de réception des reversements
   payout_method?: string | null;  // opérateur (ex. code CinetPay)
+  // Échéance de reversement (null = rien à reverser).
+  settlement_due?: {
+    amount: number;
+    since: string;        // date du plus ancien encaissement en attente
+    due_at: string;       // date limite de reversement (+ SLA)
+    days_remaining: number; // < 0 = en retard
+    overdue: boolean;
+    sla_days: number;
+  } | null;
 }
 
 const auth = () => ({ token: getAdminToken() ?? undefined });

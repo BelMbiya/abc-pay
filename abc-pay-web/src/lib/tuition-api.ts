@@ -19,6 +19,24 @@ export async function fetchEstablishments(): Promise<School[]> {
   }
 }
 
+/** Devis recalculé côté serveur : les frais sont à la charge du payeur (total = montant + frais). */
+export interface TuitionQuote {
+  amount: number;
+  service_fee: number;   // frais à la charge du payeur
+  total: number;         // montant + frais
+  commission: number;    // revenu abc pay (= frais payeur)
+  net_establishment: number; // montant plein reversé à l'établissement
+}
+
+/** Devis serveur (autoritatif). Repli hors-ligne : pas de frais connus → total = montant. */
+export async function fetchQuote(establishmentId: string, amount: number): Promise<TuitionQuote> {
+  try {
+    return await api.post<TuitionQuote>(`${V1}/payments/quote`, { establishment_id: establishmentId, amount });
+  } catch {
+    return { amount, service_fee: 0, total: amount, commission: 0, net_establishment: amount };
+  }
+}
+
 export interface TuitionPaymentPayload {
   establishment_id: string;
   student_name: string;

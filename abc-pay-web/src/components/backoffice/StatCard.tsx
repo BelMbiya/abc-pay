@@ -43,14 +43,14 @@ export function PageHeader({
   subtitle,
   actions,
 }: {
-  title: string;
+  title: React.ReactNode;
   subtitle?: string;
   actions?: React.ReactNode;
 }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="font-display text-[22px] font-extrabold tracking-tight text-ink">{title}</h1>
+        <h1 className="flex items-center gap-2 font-display text-[22px] font-extrabold tracking-tight text-ink">{title}</h1>
         {subtitle ? <p className="mt-1 text-[13px] text-gray-500">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex items-center gap-2">{actions}</div> : null}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Plus, Settings2, RefreshCw, Ban, CheckCircle2, Banknote, ShieldCheck } from "lucide-react";
-import { Button, StatusPill, useToast, useConfirm, Pagination, usePagination } from "@/components/ui";
+import { Search, Plus, Settings2, RefreshCw, Ban, CheckCircle2, Banknote, ShieldCheck, Clock, AlertTriangle } from "lucide-react";
+import { Button, StatusPill, useToast, useConfirm, Pagination, usePagination, VerifiedSeal } from "@/components/ui";
+import { money } from "@/lib/money";
 import { PageHeader } from "@/components/backoffice/StatCard";
 import { OnboardEstablishmentSheet } from "@/components/admin/OnboardEstablishmentSheet";
 import { ConfigureEstablishmentSheet } from "@/components/admin/ConfigureEstablishmentSheet";
@@ -172,8 +173,12 @@ export default function AdminEstablishmentsPage() {
                 : pageItems.map((e) => (
                     <tr key={e.id} className="border-t border-white text-[13px]">
                       <td className="py-3 pr-3">
-                        <div className="font-bold text-ink">{e.name}</div>
+                        <div className="flex items-center gap-1.5 font-bold text-ink">
+                          {e.name}
+                          {e.verified ? <VerifiedSeal size={16} /> : null}
+                        </div>
                         <div className="text-[11.5px] text-gray-500">{e.type} · {e.merchant_code}</div>
+                        {e.settlement_due ? <SettlementDue due={e.settlement_due} currency={e.currency} /> : null}
                       </td>
                       <td className="py-3 pr-3 text-gray-500">{e.city ?? "—"}</td>
                       <td className="py-3 pr-3">
@@ -237,5 +242,34 @@ export default function AdminEstablishmentsPage() {
       <ConfigureEstablishmentSheet establishment={configTarget} onClose={() => setConfigTarget(null)} onSaved={load} />
       <EstablishmentVerificationSheet establishment={verifyTarget} onClose={() => setVerifyTarget(null)} onSaved={load} />
     </div>
+  );
+}
+
+/** Indicateur d'échéance de reversement (temps restant) pour un établissement. */
+function SettlementDue({ due, currency }: { due: NonNullable<AdminEstablishment["settlement_due"]>; currency: string }) {
+  const d = due.days_remaining;
+  let cls = "bg-blue-100 text-blue-700";
+  let Icon = Clock;
+  let label: string;
+  if (due.overdue) {
+    cls = "bg-red/10 text-red";
+    Icon = AlertTriangle;
+    label = `Reversement en retard de ${Math.abs(d)} j`;
+  } else if (d === 0) {
+    cls = "bg-gold-400/15 text-gold-600";
+    label = "À reverser aujourd'hui";
+  } else if (d <= 2) {
+    cls = "bg-gold-400/15 text-gold-600";
+    label = `À reverser dans ${d} j`;
+  } else {
+    label = `À reverser dans ${d} j`;
+  }
+  return (
+    <span
+      title={`Plus ancien encaissement le ${due.since} · échéance ${due.due_at} (SLA ${due.sla_days} j)`}
+      className={`mt-1 inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[10.5px] font-bold ${cls}`}
+    >
+      <Icon className="size-3" strokeWidth={2.4} /> {label} · {money(due.amount, currency)}
+    </span>
   );
 }

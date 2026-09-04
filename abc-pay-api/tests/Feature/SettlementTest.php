@@ -57,23 +57,23 @@ class SettlementTest extends TestCase
         $staffUser = User::factory()->create();
         EstablishmentStaff::create(['establishment_id' => $e->id, 'user_id' => $staffUser->id, 'role' => 'direction']);
 
-        // Deux encaissements confirmés : net = (100+50) − (2+1) = 147.
+        // Deux encaissements confirmés : net = 100+50 = 150 (frais chez le payeur, montant plein reversé).
         $this->confirmedTx($e, 100, 2);
         $this->confirmedTx($e, 50, 1);
 
-        // Côté établissement : 147 en attente, aucune ligne « reversé ».
+        // Côté établissement : 150 en attente, aucune ligne « reversé ».
         $before = $this->getJson('/api/v1/staff/settlements', $this->staffAuth($staffUser, $e->id))->assertOk();
-        $this->assertSame(147.0, (float) $before->json('data.pending_net'));
+        $this->assertSame(150.0, (float) $before->json('data.pending_net'));
         $this->assertSame('pending', $before->json('data.settlements.0.status'));
         $this->assertSame(0.0, (float) $before->json('data.total_net'));
 
         // Côté admin : voit l'en-attente puis EXÉCUTE le reversement.
         $this->getJson("/api/v1/admin/establishments/{$e->id}/settlements", $this->adminAuth())
-            ->assertOk()->assertJsonPath('data.pending.net', 147);
+            ->assertOk()->assertJsonPath('data.pending.net', 150);
 
         $this->postJson("/api/v1/admin/establishments/{$e->id}/settlements", ['reference' => 'MP-2026-001'], $this->adminAuth())
             ->assertCreated()
-            ->assertJsonPath('data.net', 147)
+            ->assertJsonPath('data.net', 150)
             ->assertJsonPath('data.transactions_count', 2)
             ->assertJsonPath('data.status', 'paid');
 
@@ -83,10 +83,10 @@ class SettlementTest extends TestCase
         $this->assertSame(0, Transaction::whereNull('settlement_id')->count());
         $this->assertSame(2, Transaction::where('settlement_id', $settlement->id)->count());
 
-        // Côté établissement : plus rien en attente, une ligne « reversé » de 147.
+        // Côté établissement : plus rien en attente, une ligne « reversé » de 150.
         $after = $this->getJson('/api/v1/staff/settlements', $this->staffAuth($staffUser, $e->id))->assertOk();
         $this->assertSame(0.0, (float) $after->json('data.pending_net'));
-        $this->assertSame(147.0, (float) $after->json('data.total_net'));
+        $this->assertSame(150.0, (float) $after->json('data.total_net'));
         $this->assertSame('paid', $after->json('data.settlements.0.status'));
         $this->assertSame('MP-2026-001', $after->json('data.settlements.0.reference'));
 

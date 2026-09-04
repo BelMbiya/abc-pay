@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Wallet, TrendingUp, Percent, Banknote, RefreshCw } from "lucide-react";
+import { Wallet, TrendingUp, Receipt, Banknote, RefreshCw } from "lucide-react";
 import { StatCard, PageHeader } from "@/components/backoffice/StatCard";
-import { Chip, ChipGroup } from "@/components/ui";
+import { Chip, ChipGroup, VerifiedSeal } from "@/components/ui";
 import { fmt } from "@/lib/api";
 import { money } from "@/lib/money";
 import { fetchStaffDashboard, CHANNEL_COLORS, DASHBOARD_PERIODS, type DashboardPeriod, type EstablishmentDashboard } from "@/lib/dashboard-api";
@@ -63,7 +63,12 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto w-full max-w-[1100px] px-5 py-6 md:px-8 md:py-8">
       <PageHeader
-        title={establishmentName ?? "Tableau de bord"}
+        title={
+          <>
+            {establishmentName ?? "Tableau de bord"}
+            {d?.verified ? <VerifiedSeal size={20} title="Établissement vérifié" /> : null}
+          </>
+        }
         subtitle={establishmentName ? "Tableau de bord — vue en temps réel" : "Vue en temps réel de votre établissement"}
         actions={
           <button type="button" onClick={load} aria-label="Actualiser" className="flex size-[42px] items-center justify-center rounded-[12px] bg-gray-100 text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
@@ -86,10 +91,10 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-            <StatCard label="Attendu" value={`${money(k?.expected ?? 0)}`} icon={Wallet} hint="Total à recouvrer" />
+            <StatCard label="Total encaissé" value={`${money(k?.total_collected ?? 0)}`} icon={Wallet} hint="Cumul depuis le début" />
             <StatCard label="Encaissé" value={`${money(k?.collected ?? 0)}`} icon={TrendingUp} hint={`Confirmés — ${PERIOD_LABEL[period]}`} />
-            <StatCard label="Taux de recouvrement" value={`${k?.recovery_rate ?? 0} %`} icon={Percent} tone="navy" hint={`${money(k?.remaining ?? 0)} restants`} />
-            <StatCard label="Net à reverser" value={`${money(k?.pending_net ?? 0)}`} icon={Banknote} hint={`Après commission — ${PERIOD_LABEL[period]}`} />
+            <StatCard label="Paiements" value={`${k?.count ?? 0}`} icon={Receipt} tone="navy" hint={`Ticket moyen ${money(k?.avg_ticket ?? 0)} — ${PERIOD_LABEL[period]}`} />
+            <StatCard label="Net à reverser" value={`${money(k?.pending_net ?? 0)}`} icon={Banknote} hint={`Montant intégral — ${PERIOD_LABEL[period]}`} />
           </div>
 
           <div className="mt-4 grid gap-3.5 lg:grid-cols-5">

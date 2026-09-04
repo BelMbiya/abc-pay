@@ -47,6 +47,7 @@ class EstablishmentDirectory
                     'currency' => $e->currency,
                     'fees' => $bareme['fees'],
                     'presets' => $bareme['presets'],
+                    'verified' => $e->isFullyVerified(), // badge « Verified » (KYC/KYB validés)
                 ];
             })
             // RÈGLE : un établissement sans barème n'est pas encaissable → on ne le

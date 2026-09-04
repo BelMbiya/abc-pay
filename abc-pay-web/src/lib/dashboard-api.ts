@@ -20,8 +20,9 @@ export const DASHBOARD_PERIODS: { id: DashboardPeriod; label: string }[] = [
 
 export interface EstablishmentDashboard {
   establishment_name?: string;
+  verified?: boolean; // KYC/KYB validés → badge « Verified »
   period?: DashboardPeriod;
-  kpis: { expected: number; collected: number; recovery_rate: number; remaining: number; pending_net: number };
+  kpis: { expected: number; total_collected: number; collected: number; recovery_rate: number; remaining: number; pending_net: number; count: number; avg_ticket: number };
   weekly: WeekPoint[];
   by_channel: ChannelSlice[];
   unpaid: { id: string; name: string; group: string; balance: number }[];

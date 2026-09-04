@@ -5,6 +5,7 @@ namespace App\Services\Payment;
 use App\Models\Establishment;
 use App\Models\EstablishmentStaff;
 use App\Models\Settlement;
+use App\Models\SettlementAdjustment;
 use App\Models\Transaction;
 use App\Services\Notification\NotificationService;
 use App\Services\Payment\Exceptions\NothingToSettleException;
@@ -36,16 +37,24 @@ class SettlementService
         $txs = Transaction::query()
             ->where('establishment_id', $establishmentId)
             ->where('status', 'confirmee')
+            ->where('direction', 'debit') // encaissements uniquement (exclut les crédits de remboursement)
             ->whereNull('settlement_id')
             ->get(['amount', 'commission', 'created_at']);
 
         $gross = round((float) $txs->sum('amount'), 2);
         $commission = round((float) $txs->sum('commission'), 2);
 
+        // Reprises (clawback) en attente : déduites du net à reverser (remboursements déjà reversés).
+        $clawback = round((float) SettlementAdjustment::query()
+            ->where('establishment_id', $establishmentId)
+            ->whereNull('settlement_id')
+            ->sum('amount'), 2);
+
         return [
             'gross' => $gross,
-            'commission' => $commission,
-            'net' => round($gross - $commission, 2),
+            'commission' => $commission, // revenu abc pay (frais réglés par les payeurs) — NON déduit
+            'clawback' => $clawback,     // reprises en attente
+            'net' => round($gross - $clawback, 2), // net = montant plein − reprises
             'count' => $txs->count(),
             'period_start' => optional($txs->min('created_at'))?->toDateString(),
             'period_end' => optional($txs->max('created_at'))?->toDateString(),
@@ -67,12 +76,14 @@ class SettlementService
             ->get();
 
         $rows = [];
-        if ($pending['count'] > 0) {
+        // Ligne « en attente » dès qu'il y a des encaissements OU une reprise en attente (dette).
+        if ($pending['count'] > 0 || $pending['clawback'] > 0) {
             $rows[] = [
                 'week_start' => 'pending', // clé stable côté front
                 'period' => $this->periodLabel($pending['period_start'], $pending['period_end']),
                 'gross' => $pending['gross'],
                 'commission' => $pending['commission'],
+                'clawback' => $pending['clawback'],
                 'net' => $pending['net'],
                 'count' => $pending['count'],
                 'status' => 'pending',
@@ -86,6 +97,7 @@ class SettlementService
                 'period' => $this->periodLabel($s->period_start?->toDateString(), $s->period_end?->toDateString()),
                 'gross' => (float) $s->gross,
                 'commission' => (float) $s->commission,
+                'clawback' => (float) $s->clawback,
                 'net' => (float) $s->net,
                 'count' => (int) $s->transactions_count,
                 'status' => 'paid',
@@ -100,6 +112,7 @@ class SettlementService
 
         return [
             'pending_net' => $pending['net'],
+            'pending_clawback' => $pending['clawback'], // reprises en attente (déduites du net)
             'pending_period' => $pending['count'] > 0
                 ? $this->periodLabel($pending['period_start'], $pending['period_end'])
                 : null,
@@ -132,6 +145,7 @@ class SettlementService
             $txs = Transaction::query()
                 ->where('establishment_id', $establishment->id)
                 ->where('status', 'confirmee')
+                ->where('direction', 'debit') // encaissements uniquement (exclut les crédits de remboursement)
                 ->whereNull('settlement_id')
                 ->lockForUpdate()
                 ->get();
@@ -143,14 +157,31 @@ class SettlementService
             $ids = $txs->pluck('id');
             $gross = round((float) $txs->sum('amount'), 2);
             $commission = round((float) $txs->sum('commission'), 2);
-            $net = round($gross - $commission, 2);
 
-            // Reversement AUTOMATIQUE (décaissement réel via la passerelle ACTIVE — CinetPay
-            // `/transfer` ou Araka `/sendmobilemoney`) : piloté par le module transfert de la
-            // passerelle, indépendant de l'encaissement. OFF → acte comptable (marqué « payé »).
-            // ON → transfert réel, qui exige un numéro de réception (mobile money).
+            // REPRISES (clawback) en attente : remboursements de transactions déjà reversées.
+            // Elles sont DÉDUITES du montant à reverser (verrou anti-concurrence).
+            $adjustments = SettlementAdjustment::query()
+                ->where('establishment_id', $establishment->id)
+                ->whereNull('settlement_id')
+                ->lockForUpdate()
+                ->get();
+            $clawback = round((float) $adjustments->sum('amount'), 2);
+            $net = round($gross - $clawback, 2); // frais chez le payeur → net = brut − reprises
+
+            // Reprise supérieure au montant à reverser : on ne peut pas payer un net négatif.
+            // On bloque (la reprise reste en attente, déduite d'un prochain reversement plus garni).
+            if ($net < 0) {
+                throw ValidationException::withMessages([
+                    'clawback' => 'Reprise en attente ('.number_format($clawback, 2, ',', ' ').') supérieure au montant à reverser ('
+                        .number_format($gross, 2, ',', ' ').'). Attends de nouveaux encaissements ou régularise hors-bande.',
+                ]);
+            }
+
+            // Décaissement RÉEL seulement si la passerelle l'active ET qu'il reste un net > 0.
+            // (net = 0 = pending entièrement absorbé par les reprises → acte comptable, sans transfert.)
             $payoutAuto = $this->gateway->payoutEnabled();
-            if ($payoutAuto && ! $establishment->payout_phone) {
+            $doPayout = $payoutAuto && $net > 0;
+            if ($doPayout && ! $establishment->payout_phone) {
                 throw ValidationException::withMessages([
                     'payout_phone' => "Reversement automatique activé mais l'établissement n'a pas de numéro de reversement (mobile money) configuré. Renseigne-le, ou désactive le reversement automatique.",
                 ]);
@@ -162,14 +193,15 @@ class SettlementService
                 'period_end' => optional($txs->max('created_at'))?->toDateString(),
                 'gross' => $gross,
                 'commission' => $commission,
+                'clawback' => $clawback,
                 'net' => $net,
                 'currency' => $establishment->currency ?: 'USD',
                 'transactions_count' => $txs->count(),
-                'status' => $payoutAuto ? 'pending' : 'paid', // réel = posé par le webhook transfert
-                'gateway' => $payoutAuto ? $this->gateway->name() : null,
+                'status' => $doPayout ? 'pending' : 'paid', // réel = posé par le webhook transfert
+                'gateway' => $doPayout ? $this->gateway->name() : null,
                 'reference' => $reference,
                 'executed_by' => $executedBy,
-                'paid_at' => $payoutAuto ? null : now(),
+                'paid_at' => $doPayout ? null : now(),
             ]);
 
             // Rattachement GARDÉ : on ne solde que ce qui est encore en attente. Si une
@@ -181,7 +213,18 @@ class SettlementService
                 throw new NothingToSettleException();
             }
 
-            if ($payoutAuto) {
+            // Application des reprises : on les rattache au reversement (elles ne réduiront plus
+            // les suivants). Même garde d'intégrité que les transactions.
+            $adjIds = $adjustments->pluck('id');
+            if ($adjIds->isNotEmpty()) {
+                $attachedAdj = SettlementAdjustment::whereIn('id', $adjIds)->whereNull('settlement_id')
+                    ->update(['settlement_id' => $settlement->id]);
+                if ($attachedAdj !== $adjIds->count()) {
+                    throw new NothingToSettleException();
+                }
+            }
+
+            if ($doPayout) {
                 // Décaissement RÉEL via la passerelle active (CinetPay ou Araka). Atomique :
                 // si l'appel échoue, toute la transaction DB est annulée (aucun reversement
                 // fantôme). Confirmation immédiate (Success) ou via webhook (Pending).
@@ -256,13 +299,14 @@ class SettlementService
         $txs = Transaction::query()
             ->where('establishment_id', $establishmentId)
             ->where('status', 'confirmee')
+            ->where('direction', 'debit') // encaissements uniquement (exclut les crédits de remboursement)
             ->get(['amount', 'commission', 'created_at']);
 
         return $txs
             ->groupBy(fn (Transaction $t) => $t->created_at->copy()->startOfWeek()->toDateString())
             ->map(fn ($group, string $week) => [
                 'week' => $week,
-                'net' => round((float) $group->sum('amount') - (float) $group->sum('commission'), 2),
+                'net' => round((float) $group->sum('amount'), 2), // montant plein (frais chez le payeur)
             ])
             ->sortBy('week')
             ->values()

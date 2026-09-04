@@ -29,6 +29,29 @@ class EstablishmentProvisioningTest extends TestCase
         return ['Authorization' => 'Bearer '.app(JwtService::class)->issueAdminAccess($admin)];
     }
 
+    public function test_liste_admin_expose_l_echeance_de_reversement(): void
+    {
+        // A : encaissement confirmé il y a 10 jours, non reversé → EN RETARD (SLA défaut 7 j).
+        $a = Establishment::factory()->create(['name' => 'ZZ A Retard', 'currency' => 'USD']);
+        $tx = \App\Models\Transaction::create([
+            'establishment_id' => $a->id, 'student_name' => 'X', 'student_matricule' => 'M', 'fee_type' => 'Minerval',
+            'channel' => 'mpesa', 'amount' => 100, 'service_fee' => 0, 'commission' => 2, 'total' => 100,
+            'currency' => 'USD', 'status' => 'confirmee', 'confirmed_at' => now(),
+        ]);
+        \App\Models\Transaction::whereKey($tx->id)->update(['created_at' => now()->subDays(10)]);
+
+        // B : aucun encaissement en attente → pas d'échéance.
+        Establishment::factory()->create(['name' => 'ZZ B Rien']);
+
+        $rows = collect($this->getJson('/api/v1/admin/establishments', $this->adminHeaders())->assertOk()->json('data'))
+            ->keyBy('name');
+
+        $this->assertTrue($rows['ZZ A Retard']['settlement_due']['overdue']);
+        $this->assertLessThan(0, $rows['ZZ A Retard']['settlement_due']['days_remaining']);
+        $this->assertSame(100.0, (float) $rows['ZZ A Retard']['settlement_due']['amount']);
+        $this->assertNull($rows['ZZ B Rien']['settlement_due']);
+    }
+
     public function test_admin_cree_un_etablissement_avec_son_compte_de_connexion(): void
     {
         $res = $this->postJson('/api/v1/admin/establishments', [

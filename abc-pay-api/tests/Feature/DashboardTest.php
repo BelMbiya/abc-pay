@@ -41,8 +41,12 @@ class DashboardTest extends TestCase
         $res = $this->getJson('/api/v1/staff/dashboard', $headers)->assertOk();
 
         $this->assertSame(350.0, (float) $res->json('data.kpis.collected'));
+        $this->assertSame(350.0, (float) $res->json('data.kpis.total_collected')); // cumul tout confirmé
+        $this->assertSame(2, $res->json('data.kpis.count'));            // 2 encaissements sur la période
+        $this->assertSame(175.0, (float) $res->json('data.kpis.avg_ticket')); // ticket moyen = 350 / 2
         $this->assertNotEmpty($res->json('data.weekly'));
         $this->assertNotEmpty($res->json('data.by_channel'));
+        $this->assertTrue($res->json('data.verified')); // badge « Verified » dans l'espace établissement
     }
 
     public function test_dashboard_admin_agrege_la_plateforme(): void

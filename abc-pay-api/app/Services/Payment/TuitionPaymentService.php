@@ -61,8 +61,9 @@ class TuitionPaymentService
 
     /**
      * Devis (recalculé côté serveur).
-     * RÈGLE : aucun frais à la charge du PAYEUR pour la Tuition — il paie exactement
-     * le montant. La commission abc pay est prélevée CÔTÉ ÉTABLISSEMENT (sur le net reversé).
+     * RÈGLE : les frais (commission abc pay) sont À LA CHARGE DU PAYEUR — il paie
+     * `montant + frais`. L'ÉTABLISSEMENT reçoit le MONTANT PLEIN, net et exact, sans
+     * aucune déduction au reversement.
      */
     public function quote(Establishment $establishment, float $amount): array
     {
@@ -72,11 +73,11 @@ class TuitionPaymentService
 
         return [
             'amount' => $amount,
-            'service_fee' => 0.0,   // le payeur ne paie aucun frais
-            'total' => $amount,     // total dû par le payeur = montant
+            'service_fee' => $commission,                 // frais À LA CHARGE DU PAYEUR
+            'total' => round($amount + $commission, 2),   // total dû par le payeur = montant + frais
             'commission_rate' => $rate,
-            'commission' => $commission,                       // part abc pay (établissement)
-            'net_establishment' => round($amount - $commission, 2), // net reversé à l'établissement
+            'commission' => $commission,                  // revenu abc pay (= frais payeur)
+            'net_establishment' => $amount,               // l'établissement reçoit le montant PLEIN
         ];
     }
 
@@ -111,8 +112,9 @@ class TuitionPaymentService
 
         return DB::transaction(function () use ($establishment, $data, $idempotencyKey, $userId) {
             $amount = round((float) $data['amount'], 2);
-            $serviceFee = 0.0; // aucun frais à la charge du payeur (Tuition)
             $commission = round($amount * (float) $establishment->commission_rate, 2);
+            $serviceFee = $commission;            // frais À LA CHARGE DU PAYEUR
+            $total = round($amount + $serviceFee, 2); // le payeur paie montant + frais
 
             $matricule = $data['student_matricule'];
 
@@ -152,7 +154,7 @@ class TuitionPaymentService
                 'amount' => $amount,
                 'service_fee' => $serviceFee,
                 'commission' => $commission,
-                'total' => $amount, // le payeur paie exactement le montant
+                'total' => $total, // le payeur paie le montant + les frais
                 'currency' => $establishment->currency ?: app(\App\Services\Platform\SettingsService::class)->currency(),
                 'status' => 'pending', // confirmé par confirmTransaction (mock) ou le webhook passerelle
                 'gateway' => $this->gateway->enabled() ? $this->gateway->name() : null,
@@ -190,7 +192,7 @@ class TuitionPaymentService
             try {
                 $init = $this->gateway->initPayment(new PaymentRequest(
                     merchantRef: $merchantRef,
-                    amount: (int) round($amount),
+                    amount: (int) round($total),        // le payeur règle le montant + les frais
                     currency: $transaction->currency,   // DOIT = devise du compte passerelle
                     channel: $data['channel'],
                     designation: 'Scolarite - '.$data['fee_type'],

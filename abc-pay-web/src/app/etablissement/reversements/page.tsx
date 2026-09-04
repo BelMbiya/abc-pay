@@ -53,10 +53,20 @@ export default function ReversementsPage() {
       ) : (
         <>
           <div className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-3">
-            <StatCard label="Net à reverser" value={`${money(data?.pending_net ?? 0)}`} icon={Wallet} tone="navy" hint="En attente de reversement, après commission" />
+            <StatCard label="Net à reverser" value={`${money(data?.pending_net ?? 0)}`} icon={Wallet} tone="navy" hint={(data?.pending_clawback ?? 0) > 0 ? "Après reprise (voir ci-dessous)" : "Montant intégral — frais à la charge des payeurs"} />
             <StatCard label="Prochain reversement" value={data?.pending_period ?? "—"} icon={CalendarClock} hint="Période en attente" />
             <StatCard label="Total net (historique)" value={`${money(data?.total_net ?? 0)}`} icon={Banknote} hint="Cumul sur la période" />
           </div>
+
+          {(data?.pending_clawback ?? 0) > 0 ? (
+            <div className="mb-6 flex items-start gap-2.5 rounded-2xl bg-gold-400/10 px-4 py-3 text-[12.5px] text-gold-ink">
+              <span className="mt-0.5 text-gold-600">⤺</span>
+              <p>
+                Une <b>reprise de {money(data?.pending_clawback ?? 0)}</b> est déduite de ton prochain reversement : elle correspond au
+                remboursement d&apos;une (ou plusieurs) transaction(s) qui t&apos;avai(en)t déjà été reversée(s). Ton net à reverser en tient compte.
+              </p>
+            </div>
+          ) : null}
 
           {/* Graphe : net par semaine */}
           <div className="mb-6 rounded-2xl bg-gray-100 p-5">
@@ -82,9 +92,9 @@ export default function ReversementsPage() {
               <thead>
                 <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-gray-500">
                   <th className="pb-3 pr-3">Période</th>
-                  <th className="pb-3 pr-3 text-right">Brut encaissé</th>
-                  <th className="pb-3 pr-3 text-right">Commission</th>
-                  <th className="pb-3 pr-3 text-right">Net</th>
+                  <th className="pb-3 pr-3 text-right">Montant</th>
+                  <th className="pb-3 pr-3 text-right">Frais payeurs</th>
+                  <th className="pb-3 pr-3 text-right">Net reversé</th>
                   <th className="pb-3">Statut</th>
                 </tr>
               </thead>
@@ -96,9 +106,9 @@ export default function ReversementsPage() {
                 ) : (
                   pageItems.map((s) => (
                     <tr key={s.week_start} className="border-t border-white text-[13px]">
-                      <td className="py-3 pr-3 font-bold text-ink">{s.period}<div className="text-[11px] font-normal text-gray-500">{s.count} transaction{s.count > 1 ? "s" : ""}{s.transfer_id ? <> · <span className="font-semibold text-gray-600">Réf. {s.gateway === "araka" ? "Araka" : s.gateway === "cinetpay" ? "CinetPay" : "transfert"} {s.transfer_id}</span></> : null}</div></td>
+                      <td className="py-3 pr-3 font-bold text-ink">{s.period}<div className="text-[11px] font-normal text-gray-500">{s.count} transaction{s.count > 1 ? "s" : ""}{(s.clawback ?? 0) > 0 ? <> · <span className="font-semibold text-gold-600">reprise − {money(s.clawback ?? 0)}</span></> : null}{s.transfer_id ? <> · <span className="font-semibold text-gray-600">Réf. {s.gateway === "araka" ? "Araka" : s.gateway === "cinetpay" ? "CinetPay" : "transfert"} {s.transfer_id}</span></> : null}</div></td>
                       <td className="py-3 pr-3 text-right text-gray-700">{money(s.gross)}</td>
-                      <td className="py-3 pr-3 text-right text-gold-600">− {money(s.commission)}</td>
+                      <td className="py-3 pr-3 text-right text-gray-500">{money(s.commission)}</td>
                       <td className="py-3 pr-3 text-right font-bold text-ink">{money(s.net)}</td>
                       <td className="py-3">{s.status === "paid" ? <StatusPill tone="live">Reversé</StatusPill> : <StatusPill tone="gold">En attente</StatusPill>}</td>
                     </tr>

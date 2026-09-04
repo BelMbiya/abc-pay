@@ -20,6 +20,8 @@ class SettingsService
 
     private const DEFAULT_REFUND_WINDOW_DAYS = 30; // délai bancaire de remboursement (jours)
 
+    private const DEFAULT_SETTLEMENT_SLA_DAYS = 7; // délai cible de reversement à un établissement (jours)
+
     private const DEFAULT_FAQ_LIMIT = 8;      // nb max de questions affichées (landing + /faq)
 
     private const DEFAULT_REVIEWS_LIMIT = 6;  // nb max de témoignages affichés (landing)
@@ -121,6 +123,25 @@ class SettingsService
         $days = $days > 0 ? min($days, 3650) : self::DEFAULT_REFUND_WINDOW_DAYS;
         Setting::updateOrCreate(['key' => 'refund_window_days'], ['value' => (string) $days]);
         Cache::forget('settings.refund_window_days');
+
+        return $days;
+    }
+
+    /** Délai cible (jours) pour reverser un établissement, à partir de son plus ancien encaissement en attente. */
+    public function settlementSlaDays(): int
+    {
+        return Cache::remember('settings.settlement_sla_days', 300, function () {
+            $v = Setting::query()->whereKey('settlement_sla_days')->value('value');
+
+            return $v !== null && (int) $v > 0 ? (int) $v : self::DEFAULT_SETTLEMENT_SLA_DAYS;
+        });
+    }
+
+    public function setSettlementSlaDays(int $days): int
+    {
+        $days = $days > 0 ? min($days, 365) : self::DEFAULT_SETTLEMENT_SLA_DAYS;
+        Setting::updateOrCreate(['key' => 'settlement_sla_days'], ['value' => (string) $days]);
+        Cache::forget('settings.settlement_sla_days');
 
         return $days;
     }

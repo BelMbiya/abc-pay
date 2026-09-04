@@ -56,7 +56,7 @@ class TransactionHistoryTest extends TestCase
             ->assertJsonPath('data.0.fee_type', 'Minerval');
 
         $this->assertNotNull($res->json('data.0.receipt_number'));
-        $this->assertSame(250.0, (float) $res->json('data.0.total')); // payeur : montant exact, sans frais
+        $this->assertSame(255.0, (float) $res->json('data.0.total')); // payeur : montant + frais (250 + 5)
     }
 
     public function test_un_payeur_ne_voit_que_ses_propres_transactions(): void
